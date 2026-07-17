@@ -226,6 +226,8 @@ function selectDocument(index){
 
 $('#add-document-file').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;$('#file-input').click();});
 $('#add-document-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera();});
+$('#result-add-file').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;$('#file-input').click();});
+$('#result-add-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera();});
 
 async function canvasToImage(source) {
   return new Promise((resolve, reject) => {
@@ -936,7 +938,7 @@ function setAdjustMode(enabled,focusedField=null){
   state.manualMode = false;
   $('#adjust-fields').classList.toggle('active', state.adjustMode);
   $('#add-area').classList.remove('active');
-  $('#add-area').innerHTML = '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir zona manual';
+  $('#add-area').innerHTML = '<svg viewBox="0 0 20 20"><path d="M4 15.5 7.2 15l7.9-7.9-2.3-2.3-7.9 7.9L4 15.5Z"/><path d="m11.6 6 2.3 2.3M4 15.5h3.2"/></svg><span><b>Activar modo manual</b><small>Pinta con el dedo o arrastra con el ratón sobre cada zona que quieras censurar.</small></span>';
   canvas.style.cursor = state.adjustMode ? 'move' : 'default';
   canvas.classList.toggle('editing-zones',state.adjustMode);
   $('#canvas-hint-text').textContent = state.adjustMode
@@ -956,8 +958,8 @@ $('#add-area').addEventListener('click', () => {
   $('#adjust-fields').classList.remove('active');
   $('#add-area').classList.toggle('active', state.manualMode);
   $('#add-area').innerHTML = state.manualMode
-    ? '<svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>Cancelar · dibuja sobre la imagen'
-    : '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir zona manual';
+    ? '<svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg><span><b>Salir del modo manual</b><small>Ahora arrastra sobre el documento para crear tantas censuras como necesites.</small></span>'
+    : '<svg viewBox="0 0 20 20"><path d="M4 15.5 7.2 15l7.9-7.9-2.3-2.3-7.9 7.9L4 15.5Z"/><path d="m11.6 6 2.3 2.3M4 15.5h3.2"/></svg><span><b>Activar modo manual</b><small>Pinta con el dedo o arrastra con el ratón sobre cada zona que quieras censurar.</small></span>';
   canvas.style.cursor = state.manualMode ? 'crosshair' : 'default';
   canvas.classList.toggle('editing-zones',state.manualMode);
   $('#canvas-hint-text').textContent = state.manualMode ? 'Arrastra sobre la imagen para crear una zona de censura.' : 'Activa o desactiva los campos y comprueba el resultado en tiempo real.';
