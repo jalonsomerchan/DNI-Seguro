@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f3ee" />
+    <meta name="description" content="Censura de forma segura los datos de tu DNI español. Todo el proceso se realiza en tu dispositivo." />
+    <title>DNI Seguro — Censura tu documento en local</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="DNI Seguro, inicio">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.8 12.2 2 2 4.6-4.7"/></svg>
+        </span>
+        <span>DNI <strong>Seguro</strong></span>
+      </a>
+      <button class="privacy-pill" data-open-guide="privacy">
+        <span class="status-dot"></span>
+        100% privado y local
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <section class="hero" id="upload-view">
+        <div class="eyebrow"><span></span> PROTEGE TU IDENTIDAD</div>
+        <h1>Comparte tu DNI.<br /><em>No tus datos.</em></h1>
+        <p class="hero-copy">Oculta la información sensible y añade una marca de agua antes de compartirlo. Fácil, seguro y sin subir nada a internet.</p>
+
+        <div class="trust-row" aria-label="Ventajas">
+          <span><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.4c0 3.8-2.5 6.3-6 7.6-3.5-1.3-6-3.8-6-7.6V5l6-2.5Z"/><path d="m7.4 9.8 1.7 1.7 3.7-3.8"/></svg> No se sube a servidores</span>
+          <span><svg viewBox="0 0 20 20"><path d="M3 15.5h14M5 13V5.5h10V13M8 8.5h4"/></svg> Funciona en tu dispositivo</span>
+          <span><svg viewBox="0 0 20 20"><path d="M10 17.2a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z"/><path d="m6.8 10 2.1 2.1 4.4-4.5"/></svg> Sin registros</span>
+        </div>
+
+        <div class="upload-card" id="drop-zone">
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          <input id="camera-input" type="file" accept="image/*" capture="environment" hidden />
+          <div class="upload-illustration" aria-hidden="true">
+            <div class="scan-corners"></div>
+            <svg viewBox="0 0 64 64"><rect x="10" y="15" width="44" height="34" rx="5"/><circle cx="23" cy="30" r="6"/><path d="M15 44c1.7-7 5.4-10.5 11-10.5S35.3 37 37 44M40 25h9M40 31h9M40 37h6"/></svg>
+          </div>
+          <h2>Sube una foto de tu DNI</h2>
+          <p>Arrastra la imagen aquí o elige una opción</p>
+          <div class="upload-actions">
+            <button class="btn btn-primary" id="choose-file">
+              <svg viewBox="0 0 20 20"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>
+              Elegir archivo
+            </button>
+            <button class="btn btn-secondary" id="take-photo">
+              <svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>
+              Hacer una foto
+            </button>
+          </div>
+          <small>JPG, PNG o WEBP · Máximo 15 MB</small>
+        </div>
+
+        <button class="how-link" data-open-guide="guide">
+          <span><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M8.2 7.4a2 2 0 1 1 2.6 1.9c-.8.3-.8 1-.8 1.5M10 14h.01"/></svg></span>
+          ¿Cómo funciona?
+        </button>
+      </section>
+
+      <section class="workspace hidden" id="editor-view" aria-live="polite">
+        <nav class="stepper" aria-label="Progreso">
+          <button class="step active" data-step="1"><span>1</span><b>Documento</b></button>
+          <i></i>
+          <button class="step" data-step="2"><span>2</span><b>Datos a ocultar</b></button>
+          <i></i>
+          <button class="step" data-step="3"><span>3</span><b>Marca de agua</b></button>
+          <i></i>
+          <button class="step" data-step="4"><span>4</span><b>Resultado</b></button>
+        </nav>
+
+        <div class="editor-shell">
+          <div class="editor-main">
+            <div class="mobile-step-title" id="mobile-step-title">1 de 4 · Documento</div>
+            <div class="canvas-toolbar">
+              <div class="doc-status">
+                <span class="status-icon" id="side-icon"><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></span>
+                <div><b id="side-label">Analizando documento…</b><small id="ocr-status">Preparando OCR local</small></div>
+              </div>
+              <div class="zoom-controls">
+                <button id="zoom-out" aria-label="Alejar">−</button><span id="zoom-value">100%</span><button id="zoom-in" aria-label="Acercar">+</button>
+              </div>
+            </div>
+            <div class="canvas-stage" id="canvas-stage">
+              <canvas id="preview-canvas"></canvas>
+              <div class="processing-overlay" id="processing-overlay">
+                <div class="loader-ring"></div>
+                <b>Analizando en tu dispositivo</b>
+                <span id="processing-text">Preparando imagen…</span>
+                <div class="progress-track"><i id="ocr-progress"></i></div>
+              </div>
+            </div>
+            <div class="canvas-hint"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="M10 8.5V14M10 6h.01"/></svg><span id="canvas-hint-text">Puedes cambiar el tipo de documento si la detección no es correcta.</span></div>
+          </div>
+
+          <aside class="control-panel">
+            <section class="panel-step active" data-panel="1">
+              <div class="panel-heading"><span>01</span><div><h2>Revisa el documento</h2><p>Confirma qué cara del DNI has subido.</p></div></div>
+              <div class="field-label" id="document-side-label">Cara del documento</div>
+              <div class="side-selector" aria-labelledby="document-side-label">
+                <button class="side-option active" data-side="front"><span class="mini-card"><i></i><i></i><i></i></span><span><b>Anverso</b><small>Foto y datos personales</small></span><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></button>
+                <button class="side-option" data-side="back"><span class="mini-card back"><i></i><i></i><i></i></span><span><b>Reverso</b><small>Domicilio y progenitores</small></span><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></button>
+              </div>
+              <div class="local-note"><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.4c0 3.8-2.5 6.3-6 7.6-3.5-1.3-6-3.8-6-7.6V5l6-2.5Z"/><path d="M7.5 9.5h5v4h-5zM8.5 9.5v-1a1.5 1.5 0 0 1 3 0v1"/></svg><span><b>Tu imagen no sale de este dispositivo</b>El análisis se realiza de forma local en tu navegador.</span></div>
+            </section>
+
+            <section class="panel-step" data-panel="2">
+              <div class="panel-heading"><span>02</span><div><h2>Elige qué ocultar</h2><p>Hemos localizado estos campos. Activa los que quieras censurar.</p></div></div>
+              <div class="selection-tools"><button id="select-all">Seleccionar todo</button><button id="clear-all">Limpiar</button></div>
+              <div class="field-list" id="field-list"></div>
+              <button class="add-area adjust-areas" id="adjust-fields"><svg viewBox="0 0 20 20"><path d="M4 7V4h3M13 4h3v3M16 13v3h-3M7 16H4v-3"/><path d="M7 10h6M10 7v6"/></svg>Ajustar posiciones</button>
+              <button class="add-area" id="add-area"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir zona manual</button>
+              <div class="redaction-style">
+                <label class="field-label">Estilo de censura</label>
+                <div class="segmented" id="redaction-style">
+                  <button class="active" data-style="solid"><i class="sample solid"></i>Negro</button>
+                  <button data-style="pixel"><i class="sample pixel"></i>Pixelado</button>
+                  <button data-style="blur"><i class="sample blur"></i>Difuminado</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel-step" data-panel="3">
+              <div class="panel-heading"><span>03</span><div><h2>Añade una marca de agua</h2><p>Indica el uso autorizado para disuadir reutilizaciones.</p></div></div>
+              <label class="toggle-row"><span><b>Usar marca de agua</b><small>Recomendado para compartir copias</small></span><input type="checkbox" id="watermark-enabled" checked /><i></i></label>
+              <div id="watermark-controls">
+                <label class="field-label" for="watermark-text">Texto</label>
+                <div class="text-input-wrap"><input id="watermark-text" maxlength="60" value="COPIA PARA TRÁMITE" /><span id="char-count">18/60</span></div>
+                <label class="field-label">Distribución</label>
+                <div class="watermark-layouts">
+                  <button class="active" data-watermark="repeat"><span class="wm-preview repeat">USO · USO · USO<br/>USO · USO · USO<br/>USO · USO · USO</span><b>Repetida</b></button>
+                  <button data-watermark="center"><span class="wm-preview center">USO</span><b>Centro</b></button>
+                  <button data-watermark="diagonal"><span class="wm-preview diagonal">USO</span><b>Diagonal</b></button>
+                  <button data-watermark="footer"><span class="wm-preview footer">USO</span><b>Pie</b></button>
+                </div>
+                <label class="range-row"><span><b>Intensidad</b><small id="opacity-label">24%</small></span><input id="watermark-opacity" type="range" min="10" max="60" value="24" /></label>
+                <label class="field-label">Color</label>
+                <div class="color-options"><button class="active" data-color="#b42318" style="--swatch:#b42318" aria-label="Rojo"></button><button data-color="#111827" style="--swatch:#111827" aria-label="Negro"></button><button data-color="#1d4ed8" style="--swatch:#1d4ed8" aria-label="Azul"></button><button data-color="#ffffff" style="--swatch:#ffffff" aria-label="Blanco"></button></div>
+              </div>
+            </section>
+
+            <section class="panel-step result-panel" data-panel="4">
+              <div class="success-mark"><svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.5 12 2.2 2.2 4.8-4.9"/></svg></div>
+              <h2>Tu DNI está protegido</h2>
+              <p>Revisa el resultado final. La descarga se generará directamente en tu dispositivo.</p>
+              <div class="result-summary" id="result-summary"></div>
+              <label class="field-label">Formato de descarga</label>
+              <div class="segmented format-selector"><button class="active" data-format="jpeg">JPG <small>Más ligero</small></button><button data-format="png">PNG <small>Más calidad</small></button></div>
+              <button class="btn btn-download" id="download-result"><svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar DNI protegido</button>
+              <button class="start-over" id="start-over">Proteger otro documento</button>
+            </section>
+
+            <div class="panel-nav" id="panel-nav">
+              <button class="btn-back" id="prev-step"><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5 5 5 5"/></svg>Anterior</button>
+              <button class="btn btn-primary" id="next-step">Continuar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg></button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="guide-dialog">
+      <div class="dialog-head"><div class="dialog-icon"><svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.8 12.2 2 2 4.6-4.7"/></svg></div><div><span>GUÍA RÁPIDA</span><h2>Protege tu DNI en 4 pasos</h2></div><button id="close-guide" aria-label="Cerrar">×</button></div>
+      <div class="guide-body">
+        <ol>
+          <li><span>1</span><div><b>Fotografía o sube el DNI</b><p>Usa una imagen nítida, con buena luz y sin reflejos. Admite DNI español 3.0 y posteriores.</p></div></li>
+          <li><span>2</span><div><b>Elige los datos a ocultar</b><p>Detectamos los campos en el dispositivo. Revísalos y añade una zona manual si hace falta.</p></div></li>
+          <li><span>3</span><div><b>Añade una marca de agua</b><p>Escribe el uso concreto, por ejemplo “SOLO ALQUILER JULIO 2026”, para limitar su reutilización.</p></div></li>
+          <li><span>4</span><div><b>Revisa y descarga</b><p>Comprueba que no se ve ningún dato sensible antes de compartir la copia.</p></div></li>
+        </ol>
+        <div class="privacy-explainer"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5V10Z"/><circle cx="12" cy="15" r="1.5"/></svg><div><b>Privacidad desde el diseño</b><p>No hay cuentas, almacenamiento ni servidor. Al cerrar o recargar esta pestaña, la imagen desaparece.</p></div></div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="m6.8 10 2.1 2.1 4.4-4.5"/></svg><span></span></div>
+    <script src="app.js?v=38" type="module"></script>
+  </body>
+</html>
