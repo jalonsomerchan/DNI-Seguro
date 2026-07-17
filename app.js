@@ -372,7 +372,8 @@ async function analyseLocally(file) {
       mappedWords=mergeOcrWords(mappedWords,mapOcrWords(backTopResult.data.words||[],backTop));combinedText+=`\n${backTopResult.data.text||''}`;
       const vertical=prepareRotatedOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth*.32,h:state.image.naturalHeight*.78},1200);
       const verticalResult=await worker.recognize(vertical.canvas);
-      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verticalResult.data.words||[],vertical));combinedText+=`\n${verticalResult.data.text||''}`;
+      const verticalWords=mapOcrWords(verticalResult.data.words||[],vertical).filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return value.includes('EQUIPO')||(value.length>=8&&value.length<=13&&/[A-Z]/.test(value)&&/\d/.test(value));});
+      mappedWords=mergeOcrWords(mappedWords,verticalWords);combinedText+=`\n${verticalResult.data.text||''}`;
     }
     const firstLayout=makeOcrLayout(mappedWords);
     const firstMrzWords=mappedWords.filter(word=>isMrzText(normalizeText(word.text)));
@@ -392,6 +393,7 @@ async function analyseLocally(file) {
     state.ocrText=combinedText;
     state.ocrWords=mappedWords;
     state.ocrLayout = makeOcrLayout(state.ocrWords);
+    if(location.hostname==='127.0.0.1')document.documentElement.dataset.ocrDebug=JSON.stringify(state.ocrLayout.lines.map(line=>({text:line.text,normalized:line.normalized,bbox:line.bbox})));
     state.photoField = await detectPortraitField();
     detectedSide = detectSide(state.ocrText, state.ocrLayout) || detectedSide;
     setSide(detectedSide, false);
@@ -509,7 +511,7 @@ function mergeOcrWords(base,extra) {
   const merged=[...base];
   extra.forEach(word=>{
     const cx=(word.bbox.x0+word.bbox.x1)/2,cy=(word.bbox.y0+word.bbox.y1)/2,h=word.bbox.y1-word.bbox.y0;
-    const duplicate=merged.findIndex(item=>normalizeText(item.text)===normalizeText(word.text)&&Math.hypot((item.bbox.x0+item.bbox.x1)/2-cx,(item.bbox.y0+item.bbox.y1)/2-cy)<Math.max(3,h));
+    const value=normalizeText(word.text),duplicate=merged.findIndex(item=>{const other=normalizeText(item.text),distance=Math.hypot((item.bbox.x0+item.bbox.x1)/2-cx,(item.bbox.y0+item.bbox.y1)/2-cy),near=distance<Math.max(3,h*1.15);return near&&(other===value||(other.length>=5&&value.length>=5&&editDistance(other,value)<=2));});
     if(duplicate<0)merged.push(word);else if((word.confidence||0)>(merged[duplicate].confidence||0))merged[duplicate]=word;
   });
   return merged;
@@ -582,13 +584,13 @@ function makeOcrLayout(words) {
 }
 
 function editDistance(a,b) {
-  if(Math.abs(a.length-b.length)>1)return 9;let previous=[...Array(b.length+1).keys()];
+  if(Math.abs(a.length-b.length)>2)return 9;let previous=[...Array(b.length+1).keys()];
   for(let i=1;i<=a.length;i++){const current=[i];for(let j=1;j<=b.length;j++)current[j]=Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=current;}return previous[b.length];
 }
 
 function tokenMatches(value,target) {
   if(value.includes('<'))return false;
-  return value===target||(value.length<=target.length+3&&value.includes(target))||(target.length>=5&&editDistance(value,target)<=1);
+  return value===target||(value.length<=target.length+3&&value.includes(target))||(target.length>=8&&editDistance(value,target)<=2)||(target.length>=5&&editDistance(value,target)<=1);
 }
 
 function patternMatch(line, pattern) {
@@ -663,20 +665,31 @@ function locateValue(anchor, allAnchors, layout) {
 }
 
 function cleanFieldWords(schema,words=[]){
-  const stop=new Set(['DOCUMENTO','NACIONAL','IDENTIDAD','ESPANA','REINO','APELLIDOS','APELLIDO','NOMBRE','SEXO','NACIONALIDAD','NACIMIENTO','EMISION','VALIDEZ','SOPORTE','NUM','DNI','CARD','IDENTITY','NATIONAL']);
+  const stop=new Set(['DOCUMENTO','NACIONAL','IDENTIDAD','ESPANA','REINO','APELLIDOS','APELLIDO','NOMBRE','SEXO','NACIONALIDAD','NACIMIENTO','EMISION','VALIDEZ','SOPORTE','NUM','DNI','CARD','IDENTITY','NATIONAL','DOMICILIO','LUGAR','HIJO','HIJA','HIJOJA','PROGENITORES','EQUIPO','ADDRESS','PLACE','PARENTS']);
   if(['surname','surname1','surname2','name'].includes(schema.id))return words.filter(word=>{const value=normalizeText(word.text);return /^[A-Z]{2,}$/.test(value)&&!stop.has(value);}).slice(0,schema.id==='name'?2:3);
   if(schema.id==='sex')return words.filter(word=>/^[MF]$/.test(normalizeText(word.text))).slice(0,1);
   if(schema.id==='nationality')return words.filter(word=>normalizeText(word.text)==='ESP').slice(0,1);
   if(schema.id==='support')return words.filter(word=>/^[A-Z]{2,4}\d{5,9}$/.test(normalizeText(word.text).replace(/ /g,''))).slice(0,1);
+  if(schema.id==='birthPlace')return words.filter(word=>{const value=normalizeText(word.text);return /[A-Z]{3}/.test(value)&&![...stop].some(label=>value===label);}).slice(0,4);
+  if(schema.id==='address')return words.filter(word=>{const value=normalizeText(word.text);return value&&!stop.has(value);}).slice(0,9);
+  if(schema.id==='parents')return words.filter(word=>{const value=normalizeText(word.text);return /^[A-Z]{2,}$/.test(value)&&!stop.has(value);}).slice(0,7);
   return words;
 }
 
+function groupWordsByVisualLine(words,medianHeight){
+  const groups=[];[...words].sort((a,b)=>a.bbox.y0-b.bbox.y0||a.bbox.x0-b.bbox.x0).forEach(word=>{const cy=(word.bbox.y0+word.bbox.y1)/2;let group=groups.find(item=>Math.abs(item.cy-cy)<medianHeight*.8);if(!group){group={cy,words:[]};groups.push(group);}group.words.push(word);group.cy=(group.cy*(group.words.length-1)+cy)/group.words.length;});return groups.sort((a,b)=>a.cy-b.cy).map(group=>group.words.sort((a,b)=>a.bbox.x0-b.bbox.x0));
+}
+
 function findDniNumber(layout) {
-  const candidates=[];
+  const candidates=[],iw=state.image.naturalWidth,ih=state.image.naturalHeight,letterMap='TRWAGMYFPDXBNJZSQVHLCKE';
   for(const line of layout.lines){
     for(let start=0;start<line.words.length;start++)for(let end=start;end<Math.min(line.words.length,start+4);end++){
-      const words=line.words.slice(start,end+1);let value=normalizeText(words.map(word=>word.text).join('')).replace(/ /g,'');
-      if(/^\d{7,9}[A-Z]$/.test(value)||/^\d{9}$/.test(value)){if(/^\d{9}$/.test(value))value=value.slice(0,8)+'TRWAGMYFPDXBNJZSQVHLCKE'[Number(value.slice(0,8))%23];candidates.push({words,value,score:(words.length===1?5:0)+(/[A-Z]$/.test(value)?4:0)+(value.length===9?2:0)+words.reduce((s,w)=>s+(w.confidence||0),0)/Math.max(1,words.length)/100});}
+      const words=line.words.slice(start,end+1),raw=normalizeText(words.map(word=>word.text).join('')).replace(/ /g,''),box=unionBox(words),cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2;let value=raw,score=words.reduce((s,w)=>s+(w.confidence||0),0)/Math.max(1,words.length)/100;
+      if(/^\d{8}[A-Z]$/.test(raw)){const expected=letterMap[Number(raw.slice(0,8))%23];score+=raw[8]===expected?14:1;}
+      else if(/^\d{8}$/.test(raw)){value=raw+letterMap[Number(raw)%23];score+=cy<ih*.38&&cx>iw*.28?6:-4;}
+      else if(/^\d{9}$/.test(raw)&&cy<ih*.38&&cx>iw*.28){value=raw.slice(0,8)+letterMap[Number(raw.slice(0,8))%23];score+=1;}
+      else continue;
+      score+=(cy<ih*.38?4:0)+(cx>iw*.28?2:0)+(words.length===1?2:0);candidates.push({words,value,score});
     }
   }
   return candidates.sort((a,b)=>b.score-a.score)[0]||null;
@@ -855,6 +868,11 @@ function buildFieldsFromOcr(side) {
     const hint=words?.map(word=>word.text).join(' ').replace(/\s+/g,' ').trim()||'Elemento gráfico detectado';
     const confidence=words?.length?Math.round(words.reduce((sum,word)=>sum+(word.confidence||0),0)/words.length):null;
     found.push({id:anchor.schema.id,label:anchor.schema.label,hint:hint.slice(0,48),box,selected:anchor.schema.selected!==false,confidence});
+    if(side==='back'&&words?.length){
+      const groups=groupWordsByVisualLine(words,layout.medianHeight);
+      if(anchor.schema.id==='birthPlace'&&groups.length>=2&&!found.some(field=>field.id==='birthProvince')){const provinceWords=groups.at(-1);found.push({id:'birthProvince',label:'Provincia/país de nacimiento',hint:provinceWords.map(word=>word.text).join(' '),box:boxFromWords(provinceWords,layout),selected:true,confidence:Math.round(provinceWords.reduce((sum,word)=>sum+(word.confidence||0),0)/provinceWords.length)});}
+      if(anchor.schema.id==='address'&&groups.length>=2){const cityWords=groups.length>=3?groups.at(-2):groups.at(-1),provinceWords=groups.at(-1);if(!found.some(field=>field.id==='city'))found.push({id:'city',label:'Lugar de domicilio',hint:cityWords.map(word=>word.text).join(' '),box:boxFromWords(cityWords,layout),selected:true,confidence:Math.round(cityWords.reduce((sum,word)=>sum+(word.confidence||0),0)/cityWords.length)});if(groups.length>=3&&!found.some(field=>field.id==='province'))found.push({id:'province',label:'Provincia/país',hint:provinceWords.map(word=>word.text).join(' '),box:boxFromWords(provinceWords,layout),selected:true,confidence:Math.round(provinceWords.reduce((sum,word)=>sum+(word.confidence||0),0)/provinceWords.length)});}
+    }
   });
   if(side==='front'){
     mrzDerivedFrontFields(layout).forEach(field=>{if(!found.some(existing=>existing.id===field.id))found.push(field);});
@@ -864,7 +882,7 @@ function buildFieldsFromOcr(side) {
     const dni=findDniNumber(layout);if(dni)replace({id:'dni',label:'Número de DNI',hint:dni.value,box:boxFromWords(dni.words,layout),selected:true,confidence:Math.round(dni.words.reduce((s,w)=>s+(w.confidence||0),0)/dni.words.length)});
     const support=findSupportNumber(layout);if(support)replace({id:'support',label:'N.º de soporte',hint:support.value,box:boxFromWords([support.word],layout),selected:true,confidence:Math.round(support.word.confidence||0)});
     findSimpleFrontFields(layout).forEach(replace);
-    findIdentityNames(layout).forEach(replace);
+    findIdentityNames(layout).forEach(field=>{if(!found.some(existing=>existing.id===field.id))found.push(field);});
     const can=findCanNumber(layout,found);if(can&&!found.some(field=>field.id==='can'))found.push({id:'can',label:'Código CAN',hint:can.value,box:boxFromWords([can.word],layout),selected:false,confidence:Math.round(can.word.confidence||0)});
     if(state.photoField)found.unshift(state.photoField);
   }else{
