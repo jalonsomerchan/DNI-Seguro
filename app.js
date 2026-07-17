@@ -35,7 +35,8 @@ const state = {
   redactionStyle: 'solid', zoom: 1, manualMode: false, adjustMode: false,
   watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, color: '#b42318' },
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
-  cropApplied: false, rotationApplied: false, focusedField: null, rendering: false
+  cropApplied: false, rotationApplied: false, focusedField: null, rendering: false,
+  cameraStream: null, cameraFacing: 'environment', cameraFramed: false
 };
 
 const uploadView = $('#upload-view');
@@ -45,7 +46,7 @@ const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const processing = $('#processing-overlay');
 
 $('#choose-file').addEventListener('click', () => $('#file-input').click());
-$('#take-photo').addEventListener('click', () => $('#camera-input').click());
+$('#take-photo').addEventListener('click', openCamera);
 $('#file-input').addEventListener('change', e => handleFile(e.target.files[0]));
 $('#camera-input').addEventListener('change', e => handleFile(e.target.files[0]));
 
@@ -54,7 +55,7 @@ const dropZone = $('#drop-zone');
 ['dragleave', 'drop'].forEach(type => dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.remove('dragging'); }));
 dropZone.addEventListener('drop', e => handleFile(e.dataTransfer.files[0]));
 
-async function handleFile(file) {
+async function handleFile(file,{preCropped=false}={}) {
   if (!file) return;
   if (!file.type.startsWith('image/')) return toast('Elige una imagen JPG, PNG o WEBP.');
   if (file.size > 15 * 1024 * 1024) return toast('La imagen supera el límite de 15 MB.');
@@ -64,7 +65,8 @@ async function handleFile(file) {
     // No existe ninguna imagen de ejemplo o sustitución dentro de la aplicación.
     state.image = null;
     state.originalImage = null;
-    state.cropApplied = false;
+    state.cropApplied = preCropped;
+    state.cameraFramed = preCropped;
     state.rotationApplied = false;
     state.focusedField = null;
     state.fields = [];
@@ -90,6 +92,64 @@ async function handleFile(file) {
     toast('No hemos podido leer esa imagen. Prueba con otra.');
   }
 }
+
+const cameraDialog=$('#camera-dialog'),cameraVideo=$('#camera-video'),cameraViewport=$('#camera-viewport'),documentFrame=$('#document-frame');
+
+async function openCamera(){
+  if(!navigator.mediaDevices?.getUserMedia){$('#camera-input').click();return;}
+  if(!cameraDialog.open)cameraDialog.showModal();
+  await startCamera();
+}
+
+function stopCamera(){
+  state.cameraStream?.getTracks().forEach(track=>track.stop());
+  state.cameraStream=null;cameraVideo.srcObject=null;$('#capture-camera').disabled=true;
+}
+
+async function startCamera(){
+  stopCamera();
+  $('#camera-error').classList.add('hidden');$('#camera-loading').classList.remove('hidden');$('#capture-camera').disabled=true;
+  try{
+    const constraints={audio:false,video:{facingMode:{ideal:state.cameraFacing},width:{ideal:1920},height:{ideal:1080}}};
+    try{state.cameraStream=await navigator.mediaDevices.getUserMedia(constraints);}catch(error){if(error.name==='OverconstrainedError')state.cameraStream=await navigator.mediaDevices.getUserMedia({audio:false,video:true});else throw error;}
+    cameraVideo.srcObject=state.cameraStream;
+    await new Promise((resolve,reject)=>{if(cameraVideo.readyState>=1)return resolve();const timer=setTimeout(()=>reject(new Error('La cámara no respondió')),10000);cameraVideo.addEventListener('loadedmetadata',()=>{clearTimeout(timer);resolve();},{once:true});});
+    await cameraVideo.play();
+    $('#camera-loading').classList.add('hidden');$('#capture-camera').disabled=false;
+    try{const devices=await navigator.mediaDevices.enumerateDevices();$('#switch-camera').classList.toggle('hidden',devices.filter(device=>device.kind==='videoinput').length<2);}catch{$('#switch-camera').classList.remove('hidden');}
+  }catch(error){
+    console.warn('Cámara no disponible',error);stopCamera();$('#camera-loading').classList.add('hidden');$('#camera-error').classList.remove('hidden');
+  }
+}
+
+function framedVideoCrop(){
+  const vw=cameraVideo.videoWidth,vh=cameraVideo.videoHeight,viewport=cameraViewport.getBoundingClientRect(),frame=documentFrame.getBoundingClientRect();
+  if(!vw||!vh||!viewport.width||!viewport.height)return null;
+  const coverScale=Math.max(viewport.width/vw,viewport.height/vh),renderedWidth=vw*coverScale,renderedHeight=vh*coverScale,offsetX=(viewport.width-renderedWidth)/2,offsetY=(viewport.height-renderedHeight)/2;
+  let x=(frame.left-viewport.left-offsetX)/coverScale,y=(frame.top-viewport.top-offsetY)/coverScale,w=frame.width/coverScale,h=frame.height/coverScale;
+  x=Math.max(0,Math.min(vw-1,x));y=Math.max(0,Math.min(vh-1,y));w=Math.max(1,Math.min(vw-x,w));h=Math.max(1,Math.min(vh-y,h));
+  return {x,y,w,h};
+}
+
+async function captureFramedDocument(){
+  const crop=framedVideoCrop();if(!crop)return toast('Espera a que la cámara esté preparada.');
+  $('#capture-camera').disabled=true;
+  const captured=document.createElement('canvas');captured.width=Math.round(crop.w);captured.height=Math.round(crop.h);
+  captured.getContext('2d').drawImage(cameraVideo,crop.x,crop.y,crop.w,crop.h,0,0,captured.width,captured.height);
+  const blob=await new Promise(resolve=>captured.toBlob(resolve,'image/jpeg',.95));
+  if(!blob){$('#capture-camera').disabled=false;return toast('No se ha podido capturar la imagen.');}
+  stopCamera();cameraDialog.close();
+  await handleFile(new File([blob],`dni-camara-${Date.now()}.jpg`,{type:'image/jpeg'}),{preCropped:true});
+}
+
+$('#capture-camera').addEventListener('click',captureFramedDocument);
+$('#switch-camera').addEventListener('click',async()=>{state.cameraFacing=state.cameraFacing==='environment'?'user':'environment';await startCamera();});
+function closeCamera(){stopCamera();if(cameraDialog.open)cameraDialog.close();}
+$('#close-camera').addEventListener('click',closeCamera);$('#cancel-camera').addEventListener('click',closeCamera);
+$('#camera-fallback').addEventListener('click',()=>{closeCamera();$('#camera-input').click();});
+cameraDialog.addEventListener('cancel',event=>{event.preventDefault();closeCamera();});
+cameraDialog.addEventListener('close',stopCamera);
+window.addEventListener('pagehide',stopCamera);
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {

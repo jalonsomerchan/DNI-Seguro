@@ -167,11 +167,43 @@
       </section>
     </main>
 
+    <dialog id="camera-dialog" class="camera-dialog" aria-labelledby="camera-title">
+      <div class="camera-shell">
+        <header class="camera-header">
+          <div><span>CAPTURA LOCAL</span><h2 id="camera-title">Encaja el DNI en el marco</h2></div>
+          <button id="close-camera" aria-label="Cerrar cámara">×</button>
+        </header>
+        <div class="camera-viewport" id="camera-viewport">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <div class="camera-shade" aria-hidden="true"></div>
+          <div class="document-frame" id="document-frame" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </div>
+          <div class="camera-loading" id="camera-loading"><div class="loader-ring"></div><span>Preparando cámara…</span></div>
+        </div>
+        <p class="camera-instruction" id="camera-instruction">Apoya el DNI sobre una superficie lisa, evita reflejos y llena el recuadro.</p>
+        <div class="camera-error hidden" id="camera-error">
+          <b>No se ha podido abrir la cámara</b>
+          <span>Revisa el permiso de cámara o usa la captura del sistema.</span>
+          <button type="button" id="camera-fallback">Usar cámara del sistema</button>
+        </div>
+        <div class="camera-actions">
+          <button type="button" class="camera-switch" id="switch-camera" aria-label="Cambiar cámara">
+            <svg viewBox="0 0 20 20"><path d="M15.5 7A6 6 0 0 0 5 5.2L3.5 7M4.5 13A6 6 0 0 0 15 14.8l1.5-1.8"/><path d="M3.5 3.8V7h3.2M16.5 16.2V13h-3.2"/></svg>
+            Cambiar
+          </button>
+          <button type="button" class="camera-capture" id="capture-camera" disabled aria-label="Capturar DNI"><span></span></button>
+          <button type="button" class="camera-cancel" id="cancel-camera">Cancelar</button>
+        </div>
+        <div class="camera-private"><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.4c0 3.8-2.5 6.3-6 7.6-3.5-1.3-6-3.8-6-7.6V5l6-2.5Z"/><path d="m7.4 9.8 1.7 1.7 3.7-3.8"/></svg>La cámara y la foto permanecen en este dispositivo.</div>
+      </div>
+    </dialog>
+
     <dialog id="guide-dialog">
       <div class="dialog-head"><div class="dialog-icon"><svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.8 12.2 2 2 4.6-4.7"/></svg></div><div><span>GUÍA RÁPIDA</span><h2>Protege tu DNI en 4 pasos</h2></div><button id="close-guide" aria-label="Cerrar">×</button></div>
       <div class="guide-body">
         <ol>
-          <li><span>1</span><div><b>Fotografía o sube el DNI</b><p>Usa una imagen nítida, con buena luz y sin reflejos. Admite DNI español 3.0 y posteriores.</p></div></li>
+          <li><span>1</span><div><b>Fotografía o sube el DNI</b><p>Al usar la cámara, encaja todo el documento dentro del marco: solo esa zona se conservará. Usa buena luz y evita reflejos.</p></div></li>
           <li><span>2</span><div><b>Elige los datos a ocultar</b><p>Detectamos los campos en el dispositivo. Revísalos y añade una zona manual si hace falta.</p></div></li>
           <li><span>3</span><div><b>Añade una marca de agua</b><p>Escribe el uso concreto, por ejemplo “SOLO ALQUILER JULIO 2026”, para limitar su reutilización.</p></div></li>
           <li><span>4</span><div><b>Revisa y descarga</b><p>Comprueba que no se ve ningún dato sensible antes de compartir la copia.</p></div></li>
@@ -181,6 +213,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="m6.8 10 2.1 2.1 4.4-4.5"/></svg><span></span></div>
-    <script src="app.js?v=41" type="module"></script>
+    <script src="app.js?v=42" type="module"></script>
   </body>
 </html>

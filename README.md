@@ -6,6 +6,8 @@ Aplicación web para censurar datos de un DNI español (3.0 o posterior), añadi
 
 - No existe backend ni se suben imágenes a servidores.
 - La imagen se mantiene en memoria y se pierde al cerrar o recargar la pestaña.
+- La captura integrada usa `navigator.mediaDevices.getUserMedia`; el flujo de vídeo no sale del navegador y se detiene al capturar o cerrar el visor.
+- El marco de cámara mantiene la proporción física del DNI (1,586:1) y sus coordenadas se transforman a píxeles del vídeo para recortar exactamente la zona visible.
 - El OCR se ejecuta en el navegador mediante Tesseract.js.
 - El recorte automático combina las cajas del OCR con los bordes visibles de la fotografía para eliminar el fondo sin usar una plantilla de coordenadas.
 - La orientación se corrige automáticamente para documentos girados 90°, 180° o 270°; las rotaciones adicionales solo se prueban cuando la primera lectura no es coherente.
@@ -30,7 +32,7 @@ No hay proceso de compilación ni dependencias que instalar.
 
 ## Uso
 
-1. Sube una imagen o usa la cámara trasera del móvil.
+1. Sube una imagen o abre la cámara integrada. Encaja el DNI completo en el marco y pulsa el disparador; puedes cambiar entre cámaras cuando el dispositivo ofrece más de una.
 2. Confirma si es anverso o reverso.
 3. Revisa todos los campos esperables: los localizados incluyen su valor y confianza; los no localizados se indican expresamente.
 4. Selecciona los que quieras ocultar y usa “Mover y redimensionar zonas” si alguna caja necesita una corrección.
