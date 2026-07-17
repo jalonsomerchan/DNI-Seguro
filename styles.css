@@ -158,6 +158,11 @@ h1 em { color: var(--green); font-style: normal; }
 .add-area:last-of-type { margin-bottom: 18px; }
 .add-area.active { color: white; border-style: solid; border-color: var(--green); background: var(--green); }
 .add-area svg { width: 15px; }
+.manual-mode-card { min-height: 58px; padding: 10px 12px; justify-content: flex-start; text-align: left; border-style: solid; }
+.manual-mode-card > svg { width: 22px; flex: 0 0 auto; }
+.manual-mode-card span { display: flex; flex-direction: column; gap: 2px; }
+.manual-mode-card b { font-size: 10px; }.manual-mode-card small { color: #6e7b77; font-size: 8px; line-height: 1.35; font-weight: 500; }
+.manual-mode-card.active small { color: rgba(255,255,255,.78); }
 .redaction-style { border-top: 1px solid #e5e6e1; padding-top: 16px; }
 .segmented { display: grid; grid-template-columns: repeat(3,1fr); padding: 3px; background: #eef0ed; border-radius: 9px; }
 .segmented button { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 7px; background: none; color: #69736f; font-size: 9px; font-weight: 600; cursor: pointer; }
@@ -209,6 +214,11 @@ input[type="range"] { width: 100%; margin: 11px 0 0; accent-color: var(--green);
 .btn-save-photos { color: var(--green); background: #e5f3ee; border: 1px solid #bdddd2; }
 .btn-download { color: var(--ink); background: white; border: 1px solid #d7ddda; }
 .photos-hint { display: block; margin-top: 9px; color: #7b8582; font-size: 8px; line-height: 1.45; }
+.result-add-document { margin-top: 18px; padding: 13px; text-align: left; background: #f0f7f4; border: 1px solid #d4e6df; border-radius: 10px; }
+.result-add-document > b,.result-add-document > span { display: block; }.result-add-document > b { color: var(--green); font-size: 10px; }.result-add-document > span { margin-top: 3px; color: #74807c; font-size: 8px; line-height: 1.4; }
+.result-add-document > div { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.result-add-document button { min-height: 35px; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--green); background: white; border: 1px solid #c8ddd5; border-radius: 8px; font-size: 9px; font-weight: 700; cursor: pointer; }
+.result-add-document svg { width: 14px; }
 .start-over { border: 0; background: none; color: var(--green); font-size: 10px; font-weight: 700; margin-top: 14px; cursor: pointer; }
 .panel-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-top: 1px solid var(--line); }
 .btn-back { display: flex; align-items: center; gap: 5px; border: 0; background: none; color: #5f6a67; font-size: 11px; font-weight: 700; cursor: pointer; }
