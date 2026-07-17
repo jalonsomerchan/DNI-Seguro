@@ -71,6 +71,14 @@ h1 em { color: var(--green); font-style: normal; }
 .editor-shell { min-height: 680px; display: grid; grid-template-columns: minmax(0, 1fr) 390px; background: var(--paper); border: 1px solid #dcded8; border-radius: 18px; overflow: hidden; box-shadow: 0 20px 70px rgba(31,52,48,.1); }
 .editor-main { padding: 25px 30px 22px; min-width: 0; background: #eef0ed; display: flex; flex-direction: column; }
 .mobile-step-title { display: none; }
+.document-manager { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.document-tabs { min-width: 0; flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.document-tab { flex: 0 0 auto; min-height: 34px; padding: 7px 10px; display: flex; align-items: center; gap: 7px; color: #53615d; background: white; border: 1px solid #d9dfdc; border-radius: 8px; font-size: 9px; font-weight: 700; cursor: pointer; }
+.document-tab.active { color: white; background: var(--green); border-color: var(--green); }
+.document-tab span { width: 18px; height: 12px; display: block; border: 1px solid currentColor; border-radius: 2px; opacity: .75; }
+.document-add-actions { flex: 0 0 auto; display: flex; gap: 5px; }
+.document-add-actions button { min-height: 34px; padding: 7px 9px; display: flex; align-items: center; gap: 5px; color: var(--green); background: #edf7f3; border: 1px solid #cfe5dd; border-radius: 8px; font-size: 9px; font-weight: 700; cursor: pointer; }
+.document-add-actions svg { width: 14px; }
 .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .doc-status { display: flex; align-items: center; gap: 11px; }
 .doc-status > span { width: 34px; height: 34px; display: grid; place-items: center; color: var(--green); background: #dcebe6; border-radius: 9px; }
@@ -195,7 +203,12 @@ input[type="range"] { width: 100%; margin: 11px 0 0; accent-color: var(--green);
 .format-selector { grid-template-columns: 1fr 1fr; margin-bottom: 18px; }
 .format-selector button { flex-direction: column; font-size: 11px; }
 .format-selector small { font-size: 8px; font-weight: 400; }
-.btn-download { width: 100%; color: white; background: var(--green); margin-top: 4px; }
+.result-actions { display: grid; gap: 8px; }
+.result-actions .btn { width: 100%; min-height: 42px; }
+.btn-share { color: white; background: var(--green); }
+.btn-save-photos { color: var(--green); background: #e5f3ee; border: 1px solid #bdddd2; }
+.btn-download { color: var(--ink); background: white; border: 1px solid #d7ddda; }
+.photos-hint { display: block; margin-top: 9px; color: #7b8582; font-size: 8px; line-height: 1.45; }
 .start-over { border: 0; background: none; color: var(--green); font-size: 10px; font-weight: 700; margin-top: 14px; cursor: pointer; }
 .panel-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-top: 1px solid var(--line); }
 .btn-back { display: flex; align-items: center; gap: 5px; border: 0; background: none; color: #5f6a67; font-size: 11px; font-weight: 700; cursor: pointer; }
@@ -265,6 +278,7 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
   .upload-card { padding: 28px 18px 23px; border-radius: 18px; }.upload-actions { flex-direction: column; }.upload-actions .btn { width: 100%; }.upload-card h2 { font-size: 19px; }
   .workspace { padding: 0 0 25px; }.stepper { padding: 14px 22px; margin: 0; background: white; }.editor-shell { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
   .editor-main { min-height: auto; padding: 14px; }.mobile-step-title { display: block; margin-bottom: 12px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+  .document-manager { align-items: stretch; flex-direction: column; }.document-add-actions button { flex: 1; justify-content: center; }
   .canvas-toolbar { margin-bottom: 12px; }.zoom-controls { display: none; }.doc-status b { font-size: 11px; }.doc-status small { font-size: 9px; }
   .canvas-stage { min-height: 280px; max-height: 360px; }.canvas-hint { font-size: 9px; text-align: center; }
   #preview-canvas { max-width: calc(100% - 18px); max-height: 335px; }

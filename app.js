@@ -20,10 +20,10 @@ const FIELD_SCHEMAS = {
     { id:'signature', label:'Firma', anchors:[['FIRMA'],['SIGNATURE']], graphic:true }
   ],
   back: [
-    { id:'birthPlace', label:'Lugar de nacimiento', anchors:[['LUGAR','NACIMIENTO'],['PLACE','BIRTH']] },
+    { id:'birthPlace', label:'Lugar de nacimiento', anchors:[['LUGAR','NACIMIENTO'],['PLACE','BIRTH']], maxLines:2 },
     { id:'birthProvince', label:'Provincia/país de nacimiento', anchors:[['PROVINCIA','PAIS']], occurrence:0 },
     { id:'parents', label:'Progenitores', anchors:[['HIJO','DE'],['HIJA','DE'],['PROGENITORES'],['PARENTS']], maxLines:2 },
-    { id:'address', label:'Domicilio', anchors:[['DOMICILIO'],['ADDRESS']], maxLines:2 },
+    { id:'address', label:'Domicilio', anchors:[['DOMICILIO'],['ADDRESS']], maxLines:3 },
     { id:'city', label:'Lugar de domicilio', anchors:[['LUGAR','DOMICILIO'],['PLACE','ADDRESS']] },
     { id:'province', label:'Provincia/país', anchors:[['PROVINCIA','PAIS']], occurrence:1 },
     { id:'team', label:'Equipo de expedición', anchors:[['EQUIPO'],['TEAM']] }
@@ -44,11 +44,28 @@ function defaultFieldSelection(side,id){
 const state = {
   step: 1, side: 'front', image: null, originalImage: null, fileName: 'dni', fields: [],
   redactionStyle: 'solid', zoom: 1, manualMode: false, adjustMode: false,
-  watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, color: '#b42318' },
+  watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, size: 1, color: '#b42318' },
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
   cropApplied: false, rotationApplied: false, focusedField: null, rendering: false,
-  cameraStream: null, cameraFacing: 'environment', cameraFramed: false
+  cameraStream: null, cameraFacing: 'environment', cameraFramed: false,
+  documents: [], activeDocument: -1, pendingAppend: false, processingDocument: false
 };
+
+const DOCUMENT_STATE_KEYS=['side','image','originalImage','fileName','fields','ocrText','ocrWords','ocrLayout','photoField','cropApplied','rotationApplied','cameraFramed'];
+
+function currentDocumentSnapshot(){
+  return Object.fromEntries(DOCUMENT_STATE_KEYS.map(key=>[key,state[key]]));
+}
+
+function persistActiveDocument(){
+  if(state.activeDocument<0||!state.image)return;
+  state.documents[state.activeDocument]=currentDocumentSnapshot();
+}
+
+function restoreDocument(documentState){
+  DOCUMENT_STATE_KEYS.forEach(key=>{state[key]=documentState[key];});
+  state.focusedField=null;state.manualMode=false;state.adjustMode=false;
+}
 
 const uploadView = $('#upload-view');
 const editorView = $('#editor-view');
@@ -56,20 +73,30 @@ const canvas = $('#preview-canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const processing = $('#processing-overlay');
 
-$('#choose-file').addEventListener('click', () => $('#file-input').click());
-$('#take-photo').addEventListener('click', openCamera);
-$('#file-input').addEventListener('change', e => handleFile(e.target.files[0]));
-$('#camera-input').addEventListener('change', e => handleFile(e.target.files[0]));
+$('#choose-file').addEventListener('click', () => {state.pendingAppend=false;$('#file-input').click();});
+$('#take-photo').addEventListener('click',()=>{state.pendingAppend=false;openCamera();});
+$('#file-input').addEventListener('change', async e => {await handleFiles([...e.target.files]);e.target.value='';});
+$('#camera-input').addEventListener('change', async e => {await handleFile(e.target.files[0],{append:state.pendingAppend});e.target.value='';});
 
 const dropZone = $('#drop-zone');
 ['dragenter', 'dragover'].forEach(type => dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(type => dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.remove('dragging'); }));
-dropZone.addEventListener('drop', e => handleFile(e.dataTransfer.files[0]));
+dropZone.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
 
-async function handleFile(file,{preCropped=false}={}) {
+async function handleFiles(files){
+  const images=files.filter(file=>file.type.startsWith('image/'));
+  for(let index=0;index<images.length;index++)await handleFile(images[index],{append:state.documents.length>0||index>0});
+}
+
+async function handleFile(file,{preCropped=false,append=state.pendingAppend}={}) {
   if (!file) return;
   if (!file.type.startsWith('image/')) return toast('Elige una imagen JPG, PNG o WEBP.');
   if (file.size > 15 * 1024 * 1024) return toast('La imagen supera el límite de 15 MB.');
+  if(state.processingDocument)return toast('Espera a que termine el análisis actual.');
+  persistActiveDocument();
+  const previousIndex=state.activeDocument,previousDocument=previousIndex>=0?state.documents[previousIndex]:null;
+  if(!append){state.documents=[];state.activeDocument=0;}else state.activeDocument=state.documents.length;
+  state.processingDocument=true;
   state.fileName = file.name.replace(/\.[^.]+$/, '') || 'dni';
   try {
     // Se limpia por completo el documento anterior antes de leer el nuevo archivo.
@@ -98,9 +125,14 @@ async function handleFile(file,{preCropped=false}={}) {
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     await analyseLocally(file);
+    persistActiveDocument();
+    renderDocumentTabs();
   } catch (error) {
     console.error(error);
+    if(append){state.documents.splice(state.activeDocument,1);state.activeDocument=previousIndex;if(previousDocument){restoreDocument(previousDocument);fitCanvas(state.image);}}
     toast('No hemos podido leer esa imagen. Prueba con otra.');
+  } finally {
+    state.processingDocument=false;state.pendingAppend=false;renderDocumentTabs();
   }
 }
 
@@ -144,20 +176,21 @@ function framedVideoCrop(){
 
 async function captureFramedDocument(){
   const crop=framedVideoCrop();if(!crop)return toast('Espera a que la cámara esté preparada.');
+  const append=state.pendingAppend;
   $('#capture-camera').disabled=true;
   const captured=document.createElement('canvas');captured.width=Math.round(crop.w);captured.height=Math.round(crop.h);
   captured.getContext('2d').drawImage(cameraVideo,crop.x,crop.y,crop.w,crop.h,0,0,captured.width,captured.height);
   const blob=await new Promise(resolve=>captured.toBlob(resolve,'image/jpeg',.95));
   if(!blob){$('#capture-camera').disabled=false;return toast('No se ha podido capturar la imagen.');}
   stopCamera();cameraDialog.close();
-  await handleFile(new File([blob],`dni-camara-${Date.now()}.jpg`,{type:'image/jpeg'}),{preCropped:true});
+  await handleFile(new File([blob],`dni-camara-${Date.now()}.jpg`,{type:'image/jpeg'}),{preCropped:true,append});
 }
 
 $('#capture-camera').addEventListener('click',captureFramedDocument);
 $('#switch-camera').addEventListener('click',async()=>{state.cameraFacing=state.cameraFacing==='environment'?'user':'environment';await startCamera();});
-function closeCamera(){stopCamera();if(cameraDialog.open)cameraDialog.close();}
+function closeCamera(){stopCamera();state.pendingAppend=false;if(cameraDialog.open)cameraDialog.close();}
 $('#close-camera').addEventListener('click',closeCamera);$('#cancel-camera').addEventListener('click',closeCamera);
-$('#camera-fallback').addEventListener('click',()=>{closeCamera();$('#camera-input').click();});
+$('#camera-fallback').addEventListener('click',()=>{const append=state.pendingAppend;closeCamera();state.pendingAppend=append;$('#camera-input').click();});
 cameraDialog.addEventListener('cancel',event=>{event.preventDefault();closeCamera();});
 cameraDialog.addEventListener('close',stopCamera);
 window.addEventListener('pagehide',stopCamera);
@@ -177,6 +210,22 @@ function fitCanvas(image) {
   canvas.width = Math.round(image.naturalWidth * scale);
   canvas.height = Math.round(image.naturalHeight * scale);
 }
+
+function renderDocumentTabs(){
+  const tabs=$('#document-tabs');if(!tabs)return;
+  tabs.innerHTML=state.documents.map((documentState,index)=>`<button type="button" class="document-tab${index===state.activeDocument?' active':''}" data-document="${index}"><span></span>${index+1} · ${documentState.side==='back'?'Reverso':'Anverso'}</button>`).join('');
+  $$('[data-document]',tabs).forEach(button=>button.addEventListener('click',()=>selectDocument(+button.dataset.document)));
+}
+
+function selectDocument(index){
+  if(index===state.activeDocument||!state.documents[index]||state.processingDocument)return;
+  persistActiveDocument();state.activeDocument=index;restoreDocument(state.documents[index]);
+  if(state.step===4)state.step=1;
+  fitCanvas(state.image);updateSideUI();updateOcrStatus();renderFieldList();renderDocumentTabs();goToStep(state.step);
+}
+
+$('#add-document-file').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;$('#file-input').click();});
+$('#add-document-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera();});
 
 async function canvasToImage(source) {
   return new Promise((resolve, reject) => {
@@ -299,13 +348,29 @@ async function analyseLocally(file) {
     const verificationResult=await worker.recognize(verification.canvas);
     mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verificationResult.data.words||[],verification));
     combinedText+=`\n${verificationResult.data.text||''}`;
-    if(ocrCoverage(mappedWords,combinedText)<8){
+    let provisionalLayout=makeOcrLayout(mappedWords),provisionalText=normalizeText(combinedText);
+    let backLikely=provisionalText.includes('DOMICILIO')||provisionalText.includes('HIJO DE')||findMrzLines(provisionalLayout).length>=2;
+    if(ocrCoverage(mappedWords,combinedText)<8&&!backLikely){
       $('#processing-text').textContent = 'Leyendo etiquetas sobre la trama de seguridad…';
       await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
       const adaptive=prepareOcrImage(state.image,undefined,'adaptive',1800);
       const adaptiveResult=await worker.recognize(adaptive.canvas);
       mappedWords=mergeOcrWords(mappedWords,mapOcrWords(adaptiveResult.data.words||[],adaptive));
       combinedText+=`\n${adaptiveResult.data.text||''}`;
+      provisionalLayout=makeOcrLayout(mappedWords);provisionalText=normalizeText(combinedText);
+      backLikely=provisionalText.includes('DOMICILIO')||provisionalText.includes('HIJO DE')||findMrzLines(provisionalLayout).length>=2;
+    }
+    if(backLikely){
+      // En los DNI recientes el reverso concentra texto pequeño en la mitad
+      // superior y el número de equipo está impreso en vertical.
+      $('#processing-text').textContent = 'Comprobando el reverso y el código MRZ…';
+      await worker.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1' });
+      const backTop=prepareOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth,h:state.image.naturalHeight*.68},'strong',1900);
+      const backTopResult=await worker.recognize(backTop.canvas);
+      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(backTopResult.data.words||[],backTop));combinedText+=`\n${backTopResult.data.text||''}`;
+      const vertical=prepareRotatedOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth*.32,h:state.image.naturalHeight*.78},1200);
+      const verticalResult=await worker.recognize(vertical.canvas);
+      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verticalResult.data.words||[],vertical));combinedText+=`\n${verticalResult.data.text||''}`;
     }
     const firstLayout=makeOcrLayout(mappedWords);
     const firstMrzWords=mappedWords.filter(word=>isMrzText(normalizeText(word.text)));
@@ -363,6 +428,13 @@ function prepareOcrImage(image,crop={x:0,y:0,w:image.naturalWidth,h:image.natura
   return {canvas:prepared,scale,crop};
 }
 
+function prepareRotatedOcrImage(image,crop,targetWidth=1200){
+  const base=prepareOcrImage(image,crop,'strong',targetWidth),rotated=document.createElement('canvas');
+  rotated.width=base.canvas.height;rotated.height=base.canvas.width;
+  const rotatedCtx=rotated.getContext('2d');rotatedCtx.translate(rotated.width,0);rotatedCtx.rotate(Math.PI/2);rotatedCtx.drawImage(base.canvas,0,0);
+  return {canvas:rotated,scale:base.scale,crop,rotation:90,sourcePreparedHeight:base.canvas.height};
+}
+
 function topPeaks(scores,min,max,count=24){
   const peaks=[];
   for(let i=Math.max(2,Math.floor(min));i<Math.min(scores.length-2,Math.ceil(max));i++){
@@ -412,6 +484,8 @@ async function cropDocumentFromOcr(image,words){
   const pad=Math.max(3,best.w*.04);let bounds={x:Math.max(0,(best.x-pad)/scale),y:Math.max(0,(best.y-pad)/scale),w:Math.min(sourceWidth-(best.x-pad)/scale,(best.w+pad*2)/scale),h:Math.min(sourceHeight-(best.y-pad)/scale,(best.h+pad*2)/scale)};
   if(semanticEvidence){const evidenceBox=unionBox(validationWords),margin=Math.max(sourceWidth,sourceHeight)*.018,x0=Math.max(0,Math.min(bounds.x,evidenceBox.x0-margin)),y0=Math.max(0,Math.min(bounds.y,evidenceBox.y0-margin)),x1=Math.min(sourceWidth,Math.max(bounds.x+bounds.w,evidenceBox.x1+margin)),y1=Math.min(sourceHeight,Math.max(bounds.y+bounds.h,evidenceBox.y1+margin));bounds={x:x0,y:y0,w:x1-x0,h:y1-y0};}
   bounds=expandBoundsToRatio(bounds,sourceWidth,sourceHeight);
+  const sourceRatio=sourceWidth/sourceHeight;
+  if(sourceRatio>1.47&&sourceRatio<1.71&&(bounds.w<sourceWidth*.88||bounds.h<sourceHeight*.88))return null;
   if(bounds.w>sourceWidth*.96&&bounds.h>sourceHeight*.96)return null;
   const result=document.createElement('canvas'),max=2200,outScale=Math.min(1,max/Math.max(bounds.w,bounds.h));
   result.width=Math.round(bounds.w*outScale);result.height=Math.round(bounds.h*outScale);
@@ -420,7 +494,13 @@ async function cropDocumentFromOcr(image,words){
 }
 
 function mapOcrWords(words,prepared) {
-  return words.map(word=>({...word,bbox:{x0:prepared.crop.x+word.bbox.x0/prepared.scale,y0:prepared.crop.y+word.bbox.y0/prepared.scale,x1:prepared.crop.x+word.bbox.x1/prepared.scale,y1:prepared.crop.y+word.bbox.y1/prepared.scale}}));
+  return words.map(word=>{
+    if(prepared.rotation===90){
+      const height=prepared.sourcePreparedHeight,scale=prepared.scale;
+      return {...word,bbox:{x0:prepared.crop.x+word.bbox.y0/scale,y0:prepared.crop.y+(height-word.bbox.x1)/scale,x1:prepared.crop.x+word.bbox.y1/scale,y1:prepared.crop.y+(height-word.bbox.x0)/scale}};
+    }
+    return {...word,bbox:{x0:prepared.crop.x+word.bbox.x0/prepared.scale,y0:prepared.crop.y+word.bbox.y0/prepared.scale,x1:prepared.crop.x+word.bbox.x1/prepared.scale,y1:prepared.crop.y+word.bbox.y1/prepared.scale}};
+  });
 }
 
 function mergeOcrWords(base,extra) {
@@ -447,7 +527,7 @@ function loadScript(src) {
 }
 function detectSide(text, layout) {
   const value=normalizeText(text);
-  const mrz=(layout?.lines||[]).some(line=>isMrzLine(line));
+  const mrz=findMrzLines(layout).length>=2;
   if(mrz&&state.image.naturalWidth/state.image.naturalHeight>2.2)return 'front';
   const backScore=['DOMICILIO','LUGAR DOMICILIO','EQUIPO','HIJO DE'].filter(x=>value.includes(x)).length+(mrz?3:0);
   const frontScore=['APELLIDOS','NOMBRE','NACIONALIDAD','NACIMIENTO','VALIDEZ'].filter(x=>value.includes(x)).length;
@@ -458,6 +538,7 @@ function setSide(side, rerender = true) {
   state.side = side;
   state.fields = buildFieldsFromOcr(side);
   if(state.ocrLayout)updateOcrStatus();
+  persistActiveDocument();renderDocumentTabs();
   updateSideUI();
   renderFieldList();
   if (rerender) render();
@@ -614,6 +695,16 @@ function findCanNumber(layout, found) {
   return word?{word,value:normalizeText(word.text).replace(/ /g,'')}:null;
 }
 
+function findTeamNumber(layout){
+  const iw=state.image.naturalWidth;
+  const candidates=layout.lines.flatMap(line=>line.words).filter(word=>{
+    const value=normalizeText(word.text).replace(/ /g,''),cx=(word.bbox.x0+word.bbox.x1)/2,width=word.bbox.x1-word.bbox.x0,height=word.bbox.y1-word.bbox.y0;
+    return cx<iw*.36&&height>width*1.2&&value.length>=8&&value.length<=13&&/[A-Z]/.test(value)&&/\d/.test(value)&&!value.includes('IDESP')&&!isMrzText(value);
+  });
+  const word=candidates.sort((a,b)=>(b.confidence||0)-(a.confidence||0))[0];
+  return word?{word,value:normalizeText(word.text).replace(/ /g,'')}:null;
+}
+
 function findIdentityNames(layout){
   const surnameSchema=FIELD_SCHEMAS.front.find(schema=>schema.id==='surname'),nameSchema=FIELD_SCHEMAS.front.find(schema=>schema.id==='name'),surnameAnchor=findAnchors(surnameSchema,layout)[0],nameAnchor=findAnchors(nameSchema,layout)[0];
   if(!nameAnchor)return [];
@@ -649,7 +740,16 @@ function isMrzLine(line) {
 }
 
 function isMrzText(compact) {
-  return compact.length>=22&&((compact.match(/</g)||[]).length>=2||compact.includes('IDESP'));
+  const chevrons=(compact.match(/</g)||[]).length;
+  return compact.length>=22&&(chevrons>=2||compact.includes('IDESP'));
+}
+
+function findMrzLines(layout){
+  if(!layout?.lines?.length)return [];
+  const strict=layout.lines.filter(isMrzLine);if(strict.length>=2)return strict.slice(-3);
+  const imageHeight=state.image?.naturalHeight||Math.max(...layout.lines.map(line=>line.bbox.y1));
+  const relaxed=layout.lines.filter(line=>{const compact=line.normalized.replace(/ /g,''),allowed=(compact.match(/[A-Z0-9<]/g)||[]).length;return line.bbox.y0>imageHeight*.52&&compact.length>=27&&allowed/compact.length>.9&&(/[0-9]/.test(compact)||compact.includes('ESP'));});
+  return relaxed.length>=2?relaxed.slice(-3):strict;
 }
 
 function longestCommonSubstring(a,b) {
@@ -766,7 +866,8 @@ function buildFieldsFromOcr(side) {
     const can=findCanNumber(layout,found);if(can&&!found.some(field=>field.id==='can'))found.push({id:'can',label:'Código CAN',hint:can.value,box:boxFromWords([can.word],layout),selected:false,confidence:Math.round(can.word.confidence||0)});
     if(state.photoField)found.unshift(state.photoField);
   }else{
-    const mrzLines=layout.lines.filter(isMrzLine).slice(-3);if(mrzLines.length){const words=mrzLines.flatMap(line=>line.words).filter(word=>isMrzText(normalizeText(word.text).replace(/ /g,'')));found.push({id:'mrz',label:'Código MRZ',hint:`${words.length} líneas de lectura mecánica`,box:boxFromWords(words,layout),selected:true,confidence:Math.round(words.reduce((s,w)=>s+(w.confidence||0),0)/words.length)});}
+    const mrzLines=findMrzLines(layout);if(mrzLines.length){const words=mrzLines.flatMap(line=>line.words).filter(word=>normalizeText(word.text));found.push({id:'mrz',label:'Código MRZ',hint:`${mrzLines.length} líneas de lectura mecánica`,box:boxFromWords(words,layout),selected:true,confidence:Math.round(words.reduce((s,w)=>s+(w.confidence||0),0)/words.length)});}
+    const team=findTeamNumber(layout);if(team){const field={id:'team',label:'Equipo de expedición',hint:team.value,box:boxFromWords([team.word],layout),selected:true,confidence:Math.round(team.word.confidence||0)},index=found.findIndex(existing=>existing.id==='team');if(index>=0)found[index]=field;else found.push(field);}
     backDerivedFields(layout,found).forEach(field=>{if(!found.some(existing=>existing.id===field.id))found.push(field);});
   }
   const deduped=found.filter((field,index)=>!found.slice(0,index).some(previous=>previous.id===field.id));
@@ -921,42 +1022,65 @@ $$('#redaction-style button').forEach(btn => btn.addEventListener('click', () =>
 $('#watermark-enabled').addEventListener('change', e => { state.watermark.enabled = e.target.checked; $('#watermark-controls').style.opacity = e.target.checked ? '1' : '.42'; render(); });
 $('#watermark-text').addEventListener('input', e => { state.watermark.text = e.target.value; $('#char-count').textContent = `${e.target.value.length}/60`; render(); });
 $$('.watermark-layouts button').forEach(btn => btn.addEventListener('click', () => { state.watermark.layout = btn.dataset.watermark; $$('.watermark-layouts button').forEach(b => b.classList.toggle('active', b === btn)); render(); }));
+$('#watermark-size').addEventListener('input', e => { state.watermark.size = +e.target.value/100; $('#size-label').textContent = `${e.target.value}%`; render(); });
 $('#watermark-opacity').addEventListener('input', e => { state.watermark.opacity = +e.target.value/100; $('#opacity-label').textContent = `${e.target.value}%`; render(); });
 $$('.color-options button').forEach(btn => btn.addEventListener('click', () => { state.watermark.color = btn.dataset.color; $$('.color-options button').forEach(b => b.classList.toggle('active', b === btn)); render(); }));
 
 function render() {
   if (!state.image || state.rendering) return;
   state.rendering = true;
+  if(state.step===4){persistActiveDocument();composeDocuments(canvas);state.rendering=false;return;}
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(state.image,0,0,canvas.width,canvas.height);
   // Paso 1: documento original. Paso 2: censuras. Paso 3 y 4: resultado completo.
   if (state.step >= 2) {
     if (state.adjustMode && state.step === 2) state.fields.filter(f => f.selected&&f.box).forEach(drawAdjustmentGuide);
-    else state.fields.filter(f => f.selected&&f.box).forEach(drawRedaction);
+    else state.fields.filter(f => f.selected&&f.box).forEach(field=>drawRedaction(field));
   }
   if (state.step >= 3 && state.watermark.enabled && state.watermark.text.trim()) drawWatermark();
   state.rendering = false;
 }
 
-function drawRedaction(field) {
+function createDocumentCanvas(documentState,targetWidth){
+  const surface=document.createElement('canvas'),scale=targetWidth/documentState.image.naturalWidth;
+  surface.width=Math.round(targetWidth);surface.height=Math.round(documentState.image.naturalHeight*scale);
+  const surfaceCtx=surface.getContext('2d');surfaceCtx.drawImage(documentState.image,0,0,surface.width,surface.height);
+  documentState.fields.filter(field=>field.selected&&field.box).forEach(field=>drawRedaction(field,surface,surfaceCtx));
+  if(state.watermark.enabled&&state.watermark.text.trim())drawWatermark(surface,surfaceCtx);
+  return surface;
+}
+
+function composeDocuments(target){
+  const documents=[...state.documents];if(state.activeDocument>=0&&state.image)documents[state.activeDocument]=currentDocumentSnapshot();
+  const usable=documents.filter(documentState=>documentState?.image);if(!usable.length)return target;
+  const totalRatio=usable.reduce((sum,documentState)=>sum+documentState.image.naturalHeight/documentState.image.naturalWidth,0),maxPixels=14000000;
+  const widest=Math.max(...usable.map(documentState=>documentState.image.naturalWidth)),width=Math.max(600,Math.round(Math.min(1800,widest,Math.sqrt(maxPixels/Math.max(.1,totalRatio))))),gap=Math.max(12,Math.round(width*.018));
+  const heights=usable.map(documentState=>Math.round(width*documentState.image.naturalHeight/documentState.image.naturalWidth));
+  target.width=width;target.height=heights.reduce((sum,height)=>sum+height,0)+gap*(usable.length-1);
+  const targetCtx=target.getContext('2d');targetCtx.fillStyle='#ffffff';targetCtx.fillRect(0,0,target.width,target.height);
+  let y=0;usable.forEach((documentState,index)=>{const surface=createDocumentCanvas(documentState,width);targetCtx.drawImage(surface,0,y);y+=surface.height+(index<usable.length-1?gap:0);});
+  return target;
+}
+
+function drawRedaction(field,targetCanvas=canvas,targetCtx=ctx) {
   const [rx,ry,rw,rh] = field.box;
-  const x=rx*canvas.width,y=ry*canvas.height,w=rw*canvas.width,h=rh*canvas.height;
-  ctx.save();
+  const x=rx*targetCanvas.width,y=ry*targetCanvas.height,w=rw*targetCanvas.width,h=rh*targetCanvas.height;
+  targetCtx.save();
   if (state.redactionStyle === 'solid') {
-    ctx.fillStyle = '#111716'; ctx.fillRect(x,y,w,h);
+    targetCtx.fillStyle = '#111716'; targetCtx.fillRect(x,y,w,h);
   } else {
-    const sx=Math.max(0,Math.floor(x)),sy=Math.max(0,Math.floor(y)),sw=Math.min(canvas.width-sx,Math.ceil(w)),sh=Math.min(canvas.height-sy,Math.ceil(h));
+    const sx=Math.max(0,Math.floor(x)),sy=Math.max(0,Math.floor(y)),sw=Math.min(targetCanvas.width-sx,Math.ceil(w)),sh=Math.min(targetCanvas.height-sy,Math.ceil(h));
     if (sw > 0 && sh > 0) {
       const buffer=document.createElement('canvas'), bctx=buffer.getContext('2d');
       const factor=state.redactionStyle==='pixel' ? .055 : .025;
       buffer.width=Math.max(2,Math.round(sw*factor));buffer.height=Math.max(2,Math.round(sh*factor));
-      bctx.drawImage(canvas,sx,sy,sw,sh,0,0,buffer.width,buffer.height);
-      ctx.imageSmoothingEnabled = state.redactionStyle === 'blur';
-      ctx.drawImage(buffer,0,0,buffer.width,buffer.height,sx,sy,sw,sh);
-      if (state.redactionStyle==='blur') { ctx.globalAlpha=.22; ctx.fillStyle='#68716f'; ctx.fillRect(x,y,w,h); }
+      bctx.drawImage(targetCanvas,sx,sy,sw,sh,0,0,buffer.width,buffer.height);
+      targetCtx.imageSmoothingEnabled = state.redactionStyle === 'blur';
+      targetCtx.drawImage(buffer,0,0,buffer.width,buffer.height,sx,sy,sw,sh);
+      if (state.redactionStyle==='blur') { targetCtx.globalAlpha=.22; targetCtx.fillStyle='#68716f'; targetCtx.fillRect(x,y,w,h); }
     }
   }
-  ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=Math.max(1,canvas.width/900);ctx.strokeRect(x+.5,y+.5,w-1,h-1);ctx.restore();
+  targetCtx.strokeStyle='rgba(255,255,255,.7)';targetCtx.lineWidth=Math.max(1,targetCanvas.width/900);targetCtx.strokeRect(x+.5,y+.5,w-1,h-1);targetCtx.restore();
 }
 
 function drawAdjustmentGuide(field) {
@@ -972,21 +1096,21 @@ function drawAdjustmentGuide(field) {
   ctx.restore();
 }
 
-function drawWatermark() {
+function drawWatermark(targetCanvas=canvas,targetCtx=ctx) {
   const text=state.watermark.text.toUpperCase();
-  const base=Math.max(18,canvas.width*.042);
-  ctx.save(); ctx.fillStyle=hexToRgba(state.watermark.color,state.watermark.opacity); ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`800 ${base}px Manrope, sans-serif`;
+  const base=Math.max(12,targetCanvas.width*.042*state.watermark.size);
+  targetCtx.save(); targetCtx.fillStyle=hexToRgba(state.watermark.color,state.watermark.opacity); targetCtx.textAlign='center';targetCtx.textBaseline='middle';targetCtx.font=`800 ${base}px Manrope, sans-serif`;
   if (state.watermark.layout==='repeat') {
-    ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate(-Math.PI/7);const gapX=canvas.width*.42,gapY=base*3.3;
-    for(let y=-canvas.height;y<canvas.height;y+=gapY) for(let x=-canvas.width;x<canvas.width;x+=gapX) ctx.fillText(text,x,y);
+    targetCtx.translate(targetCanvas.width/2,targetCanvas.height/2);targetCtx.rotate(-Math.PI/7);const gapX=Math.max(targetCanvas.width*.26,targetCtx.measureText(text).width*1.35),gapY=base*3.3;
+    for(let y=-targetCanvas.height;y<targetCanvas.height;y+=gapY) for(let x=-targetCanvas.width;x<targetCanvas.width;x+=gapX) targetCtx.fillText(text,x,y);
   } else if (state.watermark.layout==='center') {
-    ctx.font=`800 ${Math.max(26,canvas.width*.072)}px Manrope, sans-serif`;ctx.fillText(text,canvas.width/2,canvas.height/2);
+    targetCtx.font=`800 ${Math.max(18,targetCanvas.width*.072*state.watermark.size)}px Manrope, sans-serif`;targetCtx.fillText(text,targetCanvas.width/2,targetCanvas.height/2);
   } else if (state.watermark.layout==='diagonal') {
-    ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate(-Math.PI/7);ctx.font=`800 ${Math.max(26,canvas.width*.068)}px Manrope, sans-serif`;ctx.fillText(text,0,0);
+    targetCtx.translate(targetCanvas.width/2,targetCanvas.height/2);targetCtx.rotate(-Math.PI/7);targetCtx.font=`800 ${Math.max(18,targetCanvas.width*.068*state.watermark.size)}px Manrope, sans-serif`;targetCtx.fillText(text,0,0);
   } else {
-    ctx.font=`800 ${Math.max(17,canvas.width*.032)}px Manrope, sans-serif`;ctx.fillText(text,canvas.width/2,canvas.height-base*1.05);
+    targetCtx.font=`800 ${Math.max(12,targetCanvas.width*.032*state.watermark.size)}px Manrope, sans-serif`;targetCtx.fillText(text,targetCanvas.width/2,targetCanvas.height-base*1.05);
   }
-  ctx.restore();
+  targetCtx.restore();
 }
 
 function hexToRgba(hex, alpha) { const n=parseInt(hex.slice(1),16); return `rgba(${n>>16},${(n>>8)&255},${n&255},${alpha})`; }
@@ -1000,7 +1124,9 @@ $('#prev-step').addEventListener('click', () => { if (state.step > 1) goToStep(s
 $$('.step').forEach(btn => btn.addEventListener('click', () => { const step=+btn.dataset.step;if(step<=state.step || step===state.step+1)goToStep(step); }));
 
 function goToStep(step) {
+  const previousStep=state.step;
   state.step=step;
+  if(previousStep===4&&step!==4&&state.image)fitCanvas(state.image);
   if(step!==2&&state.adjustMode){
     setAdjustMode(false);
   }
@@ -1012,23 +1138,39 @@ function goToStep(step) {
   $('#next-step').innerHTML=step===3?'Ver resultado <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>':'Continuar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>';
   const names=['Documento','Datos a ocultar','Marca de agua','Resultado'];
   $('#mobile-step-title').textContent=`${step} de 4 · ${names[step-1]}`;
-  $('#canvas-hint-text').textContent=step===1?'Puedes cambiar el tipo de documento si la detección no es correcta.':step===2?'Activa o desactiva campos y comprueba el resultado en tiempo real.':step===3?'Ajusta la marca de agua: la previsualización es exacta.':'Comprueba bien el documento antes de descargarlo.';
+  $('#canvas-hint-text').textContent=step===1?'Puedes añadir más documentos y cambiar entre ellos desde la barra superior.':step===2?'Activa o desactiva campos y comprueba el resultado en tiempo real.':step===3?'Ajusta la marca de agua: se aplicará a todos los documentos.':'Comprueba bien todos los documentos antes de compartirlos.';
   if(step===4) updateSummary();
   render();
   if(window.innerWidth<901) $('.control-panel').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function updateSummary() {
-  const count=state.fields.filter(f=>f.selected&&f.box).length;
-  $('#result-summary').innerHTML=`<div><span>Documento</span><b>${state.side==='front'?'Anverso':'Reverso'} · DNI español</b></div><div><span>Datos censurados</span><b>${count} ${count===1?'campo':'campos'}</b></div><div><span>Marca de agua</span><b>${state.watermark.enabled?'Aplicada':'Sin marca'}</b></div><div><span>Procesamiento</span><b>Local y privado</b></div>`;
+  persistActiveDocument();const documents=state.documents.filter(documentState=>documentState?.image),count=documents.reduce((sum,documentState)=>sum+documentState.fields.filter(field=>field.selected&&field.box).length,0);
+  $('#result-summary').innerHTML=`<div><span>Documentos</span><b>${documents.length} ${documents.length===1?'imagen':'imágenes'} · composición vertical</b></div><div><span>Datos censurados</span><b>${count} ${count===1?'campo':'campos'}</b></div><div><span>Marca de agua</span><b>${state.watermark.enabled?'Aplicada':'Sin marca'}</b></div><div><span>Procesamiento</span><b>Local y privado</b></div>`;
 }
 
 $$('.format-selector button').forEach(btn=>btn.addEventListener('click',()=>{state.format=btn.dataset.format;$$('.format-selector button').forEach(b=>b.classList.toggle('active',b===btn));}));
-$('#download-result').addEventListener('click', () => {
-  render();
-  const mime=state.format==='png'?'image/png':'image/jpeg';
-  canvas.toBlob(blob=>{const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`${state.fileName}-protegido.${state.format==='png'?'png':'jpg'}`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);toast('Descarga preparada en tu dispositivo.');},mime,.94);
-});
+function makeResultCanvas(){persistActiveDocument();return composeDocuments(document.createElement('canvas'));}
+function canvasBlob(surface,mime){return new Promise((resolve,reject)=>surface.toBlob(blob=>blob?resolve(blob):reject(new Error('No se pudo generar la imagen')),mime,.94));}
+async function makeResultFile(){const mime=state.format==='png'?'image/png':'image/jpeg',extension=state.format==='png'?'png':'jpg',blob=await canvasBlob(makeResultCanvas(),mime),base=state.documents.length>1?'dni-protegidos':`${state.fileName}-protegido`;return {blob,file:new File([blob],`${base}.${extension}`,{type:mime})};}
+function downloadBlob(blob,name){const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1500);}
+
+$('#download-result').addEventListener('click',async()=>{try{const {blob,file}=await makeResultFile();downloadBlob(blob,file.name);toast('Archivo preparado en tu dispositivo.');}catch{toast('No se ha podido generar la imagen.');}});
+
+async function shareResult(saveToPhotos=false){
+  try{
+    const {blob,file}=await makeResultFile();
+    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+      await navigator.share(saveToPhotos?{files:[file]}:{files:[file],title:'DNI protegido',text:'Copia de DNI protegida'});
+      toast(saveToPhotos?'Elige “Guardar imagen” para añadirla a Fotos.':'Imagen compartida.');
+    }else{
+      downloadBlob(blob,file.name);toast('Tu navegador no permite compartir imágenes; se ha descargado el archivo.');
+    }
+  }catch(error){if(error?.name!=='AbortError')toast('No se ha podido abrir el menú para compartir.');}
+}
+
+$('#share-result').addEventListener('click',()=>shareResult(false));
+$('#save-photos').addEventListener('click',()=>shareResult(true));
 $('#start-over').addEventListener('click',()=>location.reload());
 
 const guide=$('#guide-dialog');
