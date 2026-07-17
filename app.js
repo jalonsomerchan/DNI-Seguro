@@ -30,6 +30,17 @@ const FIELD_SCHEMAS = {
   ]
 };
 
+// Campos que permanecen visibles en la selección inicial. El resto de campos
+// localizados se censura por defecto, independientemente de cómo los detecte el OCR.
+const DEFAULT_VISIBLE_FIELDS = {
+  front: new Set(['surname','surname1','surname2','name','birth','dni']),
+  back: new Set(['mrz'])
+};
+
+function defaultFieldSelection(side,id){
+  return !DEFAULT_VISIBLE_FIELDS[side].has(id);
+}
+
 const state = {
   step: 1, side: 'front', image: null, originalImage: null, fileName: 'dni', fields: [],
   redactionStyle: 'solid', zoom: 1, manualMode: false, adjustMode: false,
@@ -254,9 +265,6 @@ async function analyseLocally(file) {
   $('#processing-text').textContent = 'Detectando y recortando el DNI…';
   let detectedSide = 'front';
   try {
-    const visualCrop=await cropDocumentByColor(state.image);
-    if(visualCrop){state.image=visualCrop.image;state.cropApplied=true;state.rotationApplied=visualCrop.rotated;fitCanvas(state.image);render();}
-    if(!state.cropApplied&&state.image.naturalWidth>state.image.naturalHeight){const edgeCrop=await cropDocumentFromOcr(state.image,[]);if(edgeCrop){state.image=edgeCrop.image;state.cropApplied=true;fitCanvas(state.image);render();}}
     $('#processing-text').textContent = 'Cargando el lector de texto local…';
     await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
     if (!window.Tesseract?.createWorker) throw new Error('El motor OCR no está disponible');
@@ -363,17 +371,23 @@ function topPeaks(scores,min,max,count=24){
   return peaks.sort((a,b)=>b.score-a.score).slice(0,count);
 }
 
+function expandBoundsToRatio(bounds,sourceWidth,sourceHeight,targetRatio=1.586){
+  let {x,y,w,h}=bounds;
+  if(w/h<targetRatio){const target=Math.min(sourceWidth,h*targetRatio),extra=target-w;x-=extra/2;w=target;}
+  else{const target=Math.min(sourceHeight,w/targetRatio),extra=target-h;y-=extra/2;h=target;}
+  x=Math.max(0,Math.min(sourceWidth-w,x));y=Math.max(0,Math.min(sourceHeight-h,y));
+  return {x,y,w,h};
+}
+
 async function cropDocumentFromOcr(image,words){
   const useful=words.filter(word=>word.bbox&&(word.confidence||0)>22&&normalizeText(word.text));
-  const sourceWidth=image.naturalWidth,sourceHeight=image.naturalHeight;let seed={x0:0,y0:0,x1:sourceWidth,y1:sourceHeight};
-  if(useful.length>=4){const layout=makeOcrLayout(useful),anchorWords=[];[...FIELD_SCHEMAS.front,...FIELD_SCHEMAS.back].forEach(schema=>findAnchors(schema,layout).forEach(anchor=>anchorWords.push(...anchor.words)));const structured=useful.filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return /^\d{7,9}[A-Z]$/.test(value)||/^[A-Z]{2,4}\d{5,9}$/.test(value)||/^20\d{2}$/.test(value)||value==='ESP';}),evidence=[...new Set([...anchorWords,...structured])],seedWords=evidence.length>=3?evidence:useful.filter(word=>(word.confidence||0)>48);if(seedWords.length)seed=unionBox(seedWords);}
+  const sourceWidth=image.naturalWidth,sourceHeight=image.naturalHeight;let validationWords=useful.filter(word=>(word.confidence||0)>60),semanticEvidence=false;
+  if(useful.length>=4){const layout=makeOcrLayout(useful),anchorWords=[];[...FIELD_SCHEMAS.front,...FIELD_SCHEMAS.back].forEach(schema=>findAnchors(schema,layout).forEach(anchor=>anchorWords.push(...anchor.words)));const structured=useful.filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return /^\d{7,9}[A-Z]$/.test(value)||/^[A-Z]{2,4}\d{5,9}$/.test(value)||/^20\d{2}$/.test(value)||value==='ESP';}),evidence=[...new Set([...anchorWords,...structured])];if(evidence.length>=2){validationWords=evidence;semanticEvidence=true;}}
   const scan=document.createElement('canvas'),scale=Math.min(1,900/Math.max(sourceWidth,sourceHeight));
   scan.width=Math.round(sourceWidth*scale);scan.height=Math.round(sourceHeight*scale);
   const scanCtx=scan.getContext('2d',{willReadFrequently:true});scanCtx.drawImage(image,0,0,scan.width,scan.height);
   const pixels=scanCtx.getImageData(0,0,scan.width,scan.height).data,gray=new Uint8Array(scan.width*scan.height);
   for(let i=0,p=0;i<pixels.length;i+=4,p++)gray[p]=(pixels[i]*77+pixels[i+1]*150+pixels[i+2]*29)>>8;
-  const sx0=Math.max(2,seed.x0*scale),sx1=Math.min(scan.width-3,seed.x1*scale),sy0=Math.max(2,seed.y0*scale),sy1=Math.min(scan.height-3,seed.y1*scale);
-  if(sx1-sx0<40||sy1-sy0<25)return null;
   const vertical=new Float32Array(scan.width),horizontal=new Float32Array(scan.height);
   const vy0=2,vy1=scan.height-2,hx0=2,hx1=scan.width-2;
   for(let x=2;x<scan.width-2;x++){let sum=0;for(let y=vy0;y<vy1;y+=2)sum+=Math.abs(gray[y*scan.width+x+1]-gray[y*scan.width+x-1]);vertical[x]=sum/Math.max(1,(vy1-vy0)/2);}
@@ -382,16 +396,22 @@ async function cropDocumentFromOcr(image,words){
   const xPairs=[];for(const l of xPeaks)for(const r of xPeaks)if(r.at-l.at>scan.width*.22)xPairs.push({a:l.at,b:r.at,size:r.at-l.at,score:l.score+r.score});
   const yPairs=[];for(const t of yPeaks)for(const b of yPeaks)if(b.at-t.at>scan.height*.14)yPairs.push({a:t.at,b:b.at,size:b.at-t.at,score:t.score+b.score});
   xPairs.sort((a,b)=>b.score-a.score);yPairs.sort((a,b)=>b.score-a.score);
-  const maxV=Math.max(1,...vertical),maxH=Math.max(1,...horizontal);let best=null;
+  const maxV=Math.max(1,...vertical),maxH=Math.max(1,...horizontal),reliable=validationWords;let best=null;
   for(const xp of xPairs.slice(0,80))for(const yp of yPairs.slice(0,80)){
     const ratio=xp.size/yp.size,area=xp.size*yp.size/(scan.width*scan.height);
-    if(ratio<1.34||ratio>1.86||area>.94)continue;
-    const ratioQuality=1-Math.min(1,Math.abs(ratio-1.586)/.3),edgeQuality=xp.score/(2*maxV)+yp.score/(2*maxH),areaQuality=1-Math.min(1,Math.abs(area-.3)/.35);
-    const score=edgeQuality*38+ratioQuality*37+areaQuality*25;
-    if(!best||score>best.score)best={x:xp.a,y:yp.a,w:xp.size,h:yp.size,score};
+    if(ratio<1.34||ratio>1.86||area>.94||area<.055)continue;
+    const inside=reliable.length?reliable.filter(word=>{const cx=(word.bbox.x0+word.bbox.x1)*scale/2,cy=(word.bbox.y0+word.bbox.y1)*scale/2;return cx>=xp.a&&cx<=xp.b&&cy>=yp.a&&cy<=yp.b;}).length/reliable.length:.5;
+    const ratioQuality=1-Math.min(1,Math.abs(ratio-1.586)/.3),edgeQuality=xp.score/(2*maxV)+yp.score/(2*maxH),sizeQuality=Math.sqrt(area);
+    const score=edgeQuality*34+ratioQuality*32+sizeQuality*22+inside*22;
+    if(!best||score>best.score)best={x:xp.a,y:yp.a,w:xp.size,h:yp.size,score,inside};
   }
   if(!best)return null;
-  const pad=Math.max(2,best.w*.012),bounds={x:Math.max(0,(best.x-pad)/scale),y:Math.max(0,(best.y-pad)/scale),w:Math.min(sourceWidth-(best.x-pad)/scale,(best.w+pad*2)/scale),h:Math.min(sourceHeight-(best.y-pad)/scale,(best.h+pad*2)/scale)};
+  // Solo se descarta un contorno por dejar texto fuera cuando ese texto es
+  // evidencia propia del DNI. Así, letras del fondo no bloquean un recorte válido.
+  if(semanticEvidence&&reliable.length>=4&&best.inside<.72)return null;
+  const pad=Math.max(3,best.w*.04);let bounds={x:Math.max(0,(best.x-pad)/scale),y:Math.max(0,(best.y-pad)/scale),w:Math.min(sourceWidth-(best.x-pad)/scale,(best.w+pad*2)/scale),h:Math.min(sourceHeight-(best.y-pad)/scale,(best.h+pad*2)/scale)};
+  if(semanticEvidence){const evidenceBox=unionBox(validationWords),margin=Math.max(sourceWidth,sourceHeight)*.018,x0=Math.max(0,Math.min(bounds.x,evidenceBox.x0-margin)),y0=Math.max(0,Math.min(bounds.y,evidenceBox.y0-margin)),x1=Math.min(sourceWidth,Math.max(bounds.x+bounds.w,evidenceBox.x1+margin)),y1=Math.min(sourceHeight,Math.max(bounds.y+bounds.h,evidenceBox.y1+margin));bounds={x:x0,y:y0,w:x1-x0,h:y1-y0};}
+  bounds=expandBoundsToRatio(bounds,sourceWidth,sourceHeight);
   if(bounds.w>sourceWidth*.96&&bounds.h>sourceHeight*.96)return null;
   const result=document.createElement('canvas'),max=2200,outScale=Math.min(1,max/Math.max(bounds.w,bounds.h));
   result.width=Math.round(bounds.w*outScale);result.height=Math.round(bounds.h*outScale);
@@ -751,6 +771,7 @@ function buildFieldsFromOcr(side) {
   }
   const deduped=found.filter((field,index)=>!found.slice(0,index).some(previous=>previous.id===field.id));
   const detected=deduped.filter(field=>field.id!=='surname'||!deduped.some(other=>other.id==='surname1'||other.id==='surname2'));
+  detected.forEach(field=>{field.selected=defaultFieldSelection(side,field.id);});
   const oldSurnameLayout=/PRIMER\s+APELLIDO/.test(normalizeText(state.ocrText));
   const expected=side==='front'
     ? FIELD_SCHEMAS.front.filter(schema=>oldSurnameLayout?schema.id!=='surname':!['surname1','surname2'].includes(schema.id)).concat([{id:'photo',label:'Fotografía'}])

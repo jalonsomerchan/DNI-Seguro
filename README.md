@@ -33,8 +33,10 @@ No hay proceso de compilación ni dependencias que instalar.
 ## Uso
 
 1. Sube una imagen o abre la cámara integrada. Encaja el DNI completo en el marco y pulsa el disparador; puedes cambiar entre cámaras cuando el dispositivo ofrece más de una.
+   En las imágenes subidas, el recorte busca los cuatro bordes, comprueba que contienen las etiquetas detectadas por OCR y añade un margen de seguridad para no cortar el documento.
 2. Confirma si es anverso o reverso.
 3. Revisa todos los campos esperables: los localizados incluyen su valor y confianza; los no localizados se indican expresamente.
+   En el anverso se censura inicialmente todo salvo nombre, apellidos, fecha de nacimiento y número de DNI. En el reverso se censura todo salvo el código MRZ.
 4. Selecciona los que quieras ocultar y usa “Mover y redimensionar zonas” si alguna caja necesita una corrección.
    También puedes pulsar el icono “Mover” de un campo y arrastrar directamente su censura; la esquina inferior derecha permite redimensionarla.
 5. También puedes añadir cualquier zona manual que no se haya localizado correctamente.
