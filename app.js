@@ -35,7 +35,7 @@ const state = {
   redactionStyle: 'solid', zoom: 1, manualMode: false, adjustMode: false,
   watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, color: '#b42318' },
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
-  cropApplied: false, rendering: false
+  cropApplied: false, rotationApplied: false, focusedField: null, rendering: false
 };
 
 const uploadView = $('#upload-view');
@@ -65,6 +65,8 @@ async function handleFile(file) {
     state.image = null;
     state.originalImage = null;
     state.cropApplied = false;
+    state.rotationApplied = false;
+    state.focusedField = null;
     state.fields = [];
     state.ocrText = '';
     state.ocrWords = [];
@@ -114,6 +116,45 @@ async function canvasToImage(source) {
   });
 }
 
+async function rotateImage(image,degrees){
+  const normalized=((degrees%360)+360)%360;if(!normalized)return image;
+  const output=document.createElement('canvas'),swap=normalized===90||normalized===270;
+  output.width=swap?image.naturalHeight:image.naturalWidth;output.height=swap?image.naturalWidth:image.naturalHeight;
+  const outputCtx=output.getContext('2d');outputCtx.translate(output.width/2,output.height/2);outputCtx.rotate(normalized*Math.PI/180);outputCtx.drawImage(image,-image.naturalWidth/2,-image.naturalHeight/2);
+  return canvasToImage(output);
+}
+
+function orientationScore(text=''){
+  const value=normalizeText(text),keywords=['DNI','APELLIDOS','NOMBRE','SEXO','NACIONALIDAD','NACIMIENTO','EMISION','VALIDEZ','SOPORTE','DOMICILIO','EQUIPO','IDESP'];
+  return keywords.reduce((score,keyword)=>score+(value.includes(keyword)?2:0),0)+(/\d{7,9}[A-Z0-9]/.test(value)?3:0)+((value.match(/\bESP\b/g)||[]).length?2:0);
+}
+
+function orientationQuality(result){
+  const words=(result.data.words||[]).filter(word=>normalizeText(word.text)),average=words.length?words.reduce((sum,word)=>sum+(word.confidence||0),0)/words.length:0;
+  return orientationScore(result.data.text)*18+average+Math.min(36,words.filter(word=>(word.confidence||0)>45).length*2);
+}
+
+function ocrCoverage(words,text=''){
+  const layout=makeOcrLayout(words),ids=new Set();
+  [...FIELD_SCHEMAS.front,...FIELD_SCHEMAS.back].forEach(schema=>{if(findAnchors(schema,layout).length)ids.add(schema.id);});
+  const normalized=normalizeText(text).replace(/ /g,'');
+  if(/\d{7,9}[A-Z0-9]/.test(normalized))ids.add('dni');
+  if(/[A-Z]{2,4}\d{5,9}/.test(normalized))ids.add('support');
+  if(/\d{6}/.test(normalized))ids.add('numeric');
+  return ids.size;
+}
+
+async function correctOrientationWithOcr(worker,image,initialResult,initialPrepared){
+  let best={image,result:initialResult,prepared:initialPrepared,degrees:0,semantic:orientationScore(initialResult.data.text),quality:orientationQuality(initialResult)};
+  if(best.semantic>=7)return best;
+  for(const degrees of [180,90,270]){
+    const candidateImage=await rotateImage(image,degrees),candidatePrepared=prepareOcrImage(candidateImage,undefined,'normal',1300),candidateResult=await worker.recognize(candidatePrepared.canvas),semantic=orientationScore(candidateResult.data.text),quality=orientationQuality(candidateResult)+(candidateImage.naturalWidth>candidateImage.naturalHeight?6:0);
+    if(semantic>best.semantic||quality>best.quality+9)best={image:candidateImage,result:candidateResult,prepared:candidatePrepared,degrees,semantic,quality};
+    if(best.semantic>=7)break;
+  }
+  return best;
+}
+
 async function cropDocumentByColor(image){
   const sample=document.createElement('canvas'),scale=Math.min(1,520/Math.max(image.naturalWidth,image.naturalHeight));
   sample.width=Math.round(image.naturalWidth*scale);sample.height=Math.round(image.naturalHeight*scale);
@@ -144,7 +185,7 @@ async function cropDocumentByColor(image){
   const pad=Math.max(2,best.w*.025),bounds={x:Math.max(0,(best.x-pad)/scale),y:Math.max(0,(best.y-pad)/scale),w:Math.min(image.naturalWidth-(best.x-pad)/scale,(best.w+pad*2)/scale),h:Math.min(image.naturalHeight-(best.y-pad)/scale,(best.h+pad*2)/scale)};
   const output=document.createElement('canvas'),outScale=Math.min(1,2200/Math.max(bounds.w,bounds.h));output.width=Math.round(bounds.w*outScale);output.height=Math.round(bounds.h*outScale);
   output.getContext('2d').drawImage(image,bounds.x,bounds.y,bounds.w,bounds.h,0,0,output.width,output.height);
-  return {image:await canvasToImage(output),bounds,scale:outScale};
+  return {image:await canvasToImage(output),bounds,scale:outScale,rotated:false};
 }
 
 async function analyseLocally(file) {
@@ -154,7 +195,8 @@ async function analyseLocally(file) {
   let detectedSide = 'front';
   try {
     const visualCrop=await cropDocumentByColor(state.image);
-    if(visualCrop){state.image=visualCrop.image;state.cropApplied=true;fitCanvas(state.image);render();}
+    if(visualCrop){state.image=visualCrop.image;state.cropApplied=true;state.rotationApplied=visualCrop.rotated;fitCanvas(state.image);render();}
+    if(!state.cropApplied&&state.image.naturalWidth>state.image.naturalHeight){const edgeCrop=await cropDocumentFromOcr(state.image,[]);if(edgeCrop){state.image=edgeCrop.image;state.cropApplied=true;fitCanvas(state.image);render();}}
     $('#processing-text').textContent = 'Cargando el lector de texto local…';
     await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
     if (!window.Tesseract?.createWorker) throw new Error('El motor OCR no está disponible');
@@ -169,8 +211,11 @@ async function analyseLocally(file) {
     });
     await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
     const prepared = prepareOcrImage(state.image,undefined,'normal',1400);
-    const result = await worker.recognize(prepared.canvas);
-    let mappedWords=mapOcrWords(result.data.words||[],prepared);
+    let result = await worker.recognize(prepared.canvas);
+    const orientation=await correctOrientationWithOcr(worker,state.image,result,prepared);
+    if(orientation.degrees){state.image=orientation.image;state.rotationApplied=true;fitCanvas(state.image);render();}
+    result=orientation.result;
+    let mappedWords=mapOcrWords(result.data.words||[],orientation.prepared);
     let combinedText=result.data.text||'';
     $('#processing-text').textContent = 'Recortando el documento detectado…';
     const crop=state.cropApplied?null:await cropDocumentFromOcr(state.image,mappedWords);
@@ -186,12 +231,14 @@ async function analyseLocally(file) {
     const verificationResult=await worker.recognize(verification.canvas);
     mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verificationResult.data.words||[],verification));
     combinedText+=`\n${verificationResult.data.text||''}`;
-    $('#processing-text').textContent = 'Leyendo etiquetas sobre la trama de seguridad…';
-    await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
-    const adaptive=prepareOcrImage(state.image,undefined,'adaptive');
-    const adaptiveResult=await worker.recognize(adaptive.canvas);
-    mappedWords=mergeOcrWords(mappedWords,mapOcrWords(adaptiveResult.data.words||[],adaptive));
-    combinedText+=`\n${adaptiveResult.data.text||''}`;
+    if(ocrCoverage(mappedWords,combinedText)<8){
+      $('#processing-text').textContent = 'Leyendo etiquetas sobre la trama de seguridad…';
+      await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
+      const adaptive=prepareOcrImage(state.image,undefined,'adaptive',1800);
+      const adaptiveResult=await worker.recognize(adaptive.canvas);
+      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(adaptiveResult.data.words||[],adaptive));
+      combinedText+=`\n${adaptiveResult.data.text||''}`;
+    }
     const firstLayout=makeOcrLayout(mappedWords);
     const firstMrzWords=mappedWords.filter(word=>isMrzText(normalizeText(word.text)));
     // Si una sola foto contiene las dos caras, la MRZ identifica el comienzo
@@ -258,13 +305,8 @@ function topPeaks(scores,min,max,count=24){
 
 async function cropDocumentFromOcr(image,words){
   const useful=words.filter(word=>word.bbox&&(word.confidence||0)>22&&normalizeText(word.text));
-  if(useful.length<4)return null;
-  const layout=makeOcrLayout(useful),anchorWords=[];
-  [...FIELD_SCHEMAS.front,...FIELD_SCHEMAS.back].forEach(schema=>findAnchors(schema,layout).forEach(anchor=>anchorWords.push(...anchor.words)));
-  const structured=useful.filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return /^\d{7,9}[A-Z]$/.test(value)||/^[A-Z]{2,4}\d{5,9}$/.test(value)||/^20\d{2}$/.test(value)||value==='ESP';});
-  const evidence=[...new Set([...anchorWords,...structured])],seedWords=evidence.length>=3?evidence:useful.filter(word=>(word.confidence||0)>48);
-  if(!seedWords.length)return null;
-  const seed=unionBox(seedWords),sourceWidth=image.naturalWidth,sourceHeight=image.naturalHeight;
+  const sourceWidth=image.naturalWidth,sourceHeight=image.naturalHeight;let seed={x0:0,y0:0,x1:sourceWidth,y1:sourceHeight};
+  if(useful.length>=4){const layout=makeOcrLayout(useful),anchorWords=[];[...FIELD_SCHEMAS.front,...FIELD_SCHEMAS.back].forEach(schema=>findAnchors(schema,layout).forEach(anchor=>anchorWords.push(...anchor.words)));const structured=useful.filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return /^\d{7,9}[A-Z]$/.test(value)||/^[A-Z]{2,4}\d{5,9}$/.test(value)||/^20\d{2}$/.test(value)||value==='ESP';}),evidence=[...new Set([...anchorWords,...structured])],seedWords=evidence.length>=3?evidence:useful.filter(word=>(word.confidence||0)>48);if(seedWords.length)seed=unionBox(seedWords);}
   const scan=document.createElement('canvas'),scale=Math.min(1,900/Math.max(sourceWidth,sourceHeight));
   scan.width=Math.round(sourceWidth*scale);scan.height=Math.round(sourceHeight*scale);
   const scanCtx=scan.getContext('2d',{willReadFrequently:true});scanCtx.drawImage(image,0,0,scan.width,scan.height);
@@ -343,7 +385,7 @@ function setSide(side, rerender = true) {
 
 function updateOcrStatus(){
   const detected=state.fields.filter(field=>field.box).length,total=state.fields.filter(field=>!field.manual).length;
-  $('#ocr-status').textContent=`${detected} de ${total} campos localizados${state.cropApplied?' · DNI recortado':''}`;
+  $('#ocr-status').textContent=`${detected} de ${total} campos localizados${state.cropApplied?' · DNI recortado':''}${state.rotationApplied?' · orientación corregida':''}`;
 }
 
 function normalizeText(value='') {
@@ -682,46 +724,60 @@ function renderFieldList() {
     return;
   }
   state.fields.forEach(field => {
-    const label = document.createElement('label');
-    label.className = `field-item${field.missing?' missing':''}`;
+    const label = document.createElement('div');
+    label.className = `field-item${field.missing?' missing':''}${state.focusedField===field.id?' focused':''}`;
     const confidence = field.confidence ?? null;
-    label.innerHTML = `<input type="checkbox" ${field.selected ? 'checked' : ''} ${field.box?'':'disabled'} data-field="${field.id}">
+    label.innerHTML = `<label class="field-toggle"><input type="checkbox" ${field.selected ? 'checked' : ''} ${field.box?'':'disabled'} data-field="${field.id}">
       <span class="field-check"><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></span>
-      <span class="field-copy"><b>${escapeHtml(field.label)}</b><small>${escapeHtml(field.hint)}</small></span>
-      ${field.manual ? '' : `<span class="confidence ${field.missing?'missing':confidence !== null && confidence < 70 ? 'low' : ''}">${field.missing?'No localizado':confidence === null ? 'Localizado' : `${confidence}%`}</span>`}`;
+      <span class="field-copy"><b>${escapeHtml(field.label)}</b><small>${escapeHtml(field.hint)}</small></span></label>
+      ${field.manual ? '' : `<span class="confidence ${field.missing?'missing':confidence !== null && confidence < 70 ? 'low' : ''}">${field.missing?'No localizado':confidence === null ? 'Localizado' : `${confidence}%`}</span>`}
+      ${field.box?`<button type="button" class="move-field" data-move-field="${field.id}" aria-label="Mover ${escapeHtml(field.label)}"><svg viewBox="0 0 20 20"><path d="M10 2.5v15M2.5 10h15M10 2.5 7.5 5M10 2.5 12.5 5M17.5 10 15 7.5M17.5 10 15 12.5M10 17.5 7.5 15M10 17.5 12.5 15M2.5 10 5 7.5M2.5 10 5 12.5"/></svg></button>`:''}`;
     list.appendChild(label);
   });
   $$('input[data-field]', list).forEach(input => input.addEventListener('change', () => {
     state.fields.find(f => f.id === input.dataset.field).selected = input.checked;
     render();
   }));
+  $$('[data-move-field]',list).forEach(button=>button.addEventListener('click',()=>{
+    const field=state.fields.find(item=>item.id===button.dataset.moveField);if(!field)return;
+    field.selected=true;setAdjustMode(true,field.id);renderFieldList();render();
+    $('#canvas-stage').scrollIntoView({behavior:'smooth',block:'center'});toast('Arrastra la zona sobre el documento. Usa la esquina para cambiar su tamaño.');
+  }));
 }
 
 $('#select-all').addEventListener('click', () => { state.fields.forEach(f => f.selected = Boolean(f.box)); renderFieldList(); render(); });
 $('#clear-all').addEventListener('click', () => { state.fields.forEach(f => f.selected = false); renderFieldList(); render(); });
 
-$('#adjust-fields').addEventListener('click', () => {
-  state.adjustMode = !state.adjustMode;
+function setAdjustMode(enabled,focusedField=null){
+  state.adjustMode=enabled;
+  state.focusedField=enabled?focusedField:null;
   state.manualMode = false;
   $('#adjust-fields').classList.toggle('active', state.adjustMode);
   $('#add-area').classList.remove('active');
   $('#add-area').innerHTML = '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir zona manual';
   canvas.style.cursor = state.adjustMode ? 'move' : 'default';
+  canvas.classList.toggle('editing-zones',state.adjustMode);
   $('#canvas-hint-text').textContent = state.adjustMode
     ? 'Arrastra una zona para moverla o su esquina inferior derecha para cambiar su tamaño.'
     : 'Activa o desactiva los campos y comprueba el resultado en tiempo real.';
+}
+
+$('#adjust-fields').addEventListener('click', () => {
+  setAdjustMode(!state.adjustMode);
   render();
 });
 
 $('#add-area').addEventListener('click', () => {
   state.manualMode = !state.manualMode;
   state.adjustMode = false;
+  state.focusedField = null;
   $('#adjust-fields').classList.remove('active');
   $('#add-area').classList.toggle('active', state.manualMode);
   $('#add-area').innerHTML = state.manualMode
     ? '<svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>Cancelar · dibuja sobre la imagen'
     : '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir zona manual';
   canvas.style.cursor = state.manualMode ? 'crosshair' : 'default';
+  canvas.classList.toggle('editing-zones',state.manualMode);
   $('#canvas-hint-text').textContent = state.manualMode ? 'Arrastra sobre la imagen para crear una zona de censura.' : 'Activa o desactiva los campos y comprueba el resultado en tiempo real.';
 });
 
@@ -730,12 +786,14 @@ let fieldDrag = null;
 canvas.addEventListener('pointerdown', e => {
   if (state.adjustMode) {
     const p = canvasPoint(e);
-    const hit = [...state.fields.filter(field => field.selected&&field.box)].reverse().find(field => {
+    const candidates=state.fields.filter(field=>field.selected&&field.box).sort((a,b)=>(a.id===state.focusedField?1:0)-(b.id===state.focusedField?1:0));
+    const hit = [...candidates].reverse().find(field => {
       const x=field.box[0]*canvas.width,y=field.box[1]*canvas.height,w=field.box[2]*canvas.width,h=field.box[3]*canvas.height;
       const handle=Math.max(14,canvas.width*.012);
       return (p.x>=x&&p.x<=x+w&&p.y>=y&&p.y<=y+h)||Math.hypot(p.x-(x+w),p.y-(y+h))<=handle;
     });
     if (!hit) return;
+    state.focusedField=hit.id;
     const x=hit.box[0]*canvas.width,y=hit.box[1]*canvas.height,w=hit.box[2]*canvas.width,h=hit.box[3]*canvas.height;
     const handle=Math.max(14,canvas.width*.012);
     fieldDrag={field:hit,mode:Math.hypot(p.x-(x+w),p.y-(y+h))<=handle?'resize':'move',start:p,original:[...hit.box]};
@@ -759,7 +817,7 @@ canvas.addEventListener('pointermove', e => {
   render();
 });
 canvas.addEventListener('pointerup', e => {
-  if(fieldDrag){fieldDrag=null;toast('Posición actualizada.');return;}
+  if(fieldDrag){fieldDrag=null;renderFieldList();render();toast('Posición actualizada.');return;}
   if (!state.manualMode || !dragStart) return;
   const end = canvasPoint(e);
   const x = Math.min(dragStart.x, end.x), y = Math.min(dragStart.y, end.y);
@@ -771,6 +829,7 @@ canvas.addEventListener('pointerup', e => {
     renderFieldList(); render(); toast('Zona manual añadida.');
   }
 });
+canvas.addEventListener('pointercancel',()=>{fieldDrag=null;dragStart=null;});
 function canvasPoint(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX-r.left)*canvas.width/r.width, y:(e.clientY-r.top)*canvas.height/r.height }; }
 
 $$('#redaction-style button').forEach(btn => btn.addEventListener('click', () => {
@@ -862,9 +921,7 @@ $$('.step').forEach(btn => btn.addEventListener('click', () => { const step=+btn
 function goToStep(step) {
   state.step=step;
   if(step!==2&&state.adjustMode){
-    state.adjustMode=false;
-    $('#adjust-fields').classList.remove('active');
-    canvas.style.cursor='default';
+    setAdjustMode(false);
   }
   $$('.panel-step').forEach(p=>p.classList.toggle('active',+p.dataset.panel===step));
   $$('.step').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===step);s.classList.toggle('done',n<step);});

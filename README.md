@@ -8,7 +8,8 @@ Aplicación web para censurar datos de un DNI español (3.0 o posterior), añadi
 - La imagen se mantiene en memoria y se pierde al cerrar o recargar la pestaña.
 - El OCR se ejecuta en el navegador mediante Tesseract.js.
 - El recorte automático combina las cajas del OCR con los bordes visibles de la fotografía para eliminar el fondo sin usar una plantilla de coordenadas.
-- Se realizan tres lecturas OCR complementarias, incluida una binarización adaptativa, para recuperar etiquetas pequeñas o afectadas por hologramas y reflejos.
+- La orientación se corrige automáticamente para documentos girados 90°, 180° o 270°; las rotaciones adicionales solo se prueban cuando la primera lectura no es coherente.
+- Se realizan dos lecturas OCR complementarias y una tercera binarización adaptativa solo cuando faltan campos, para recuperar etiquetas pequeñas sin penalizar siempre el rendimiento.
 - Las posiciones no proceden de una plantilla: se calculan con las cajas de texto devueltas por el OCR.
 - Las etiquetas se relacionan con sus valores por proximidad, líneas de texto y contenido MRZ.
 - En imágenes que contienen las dos caras se realiza una segunda pasada sobre cada región detectada.
@@ -32,7 +33,8 @@ No hay proceso de compilación ni dependencias que instalar.
 1. Sube una imagen o usa la cámara trasera del móvil.
 2. Confirma si es anverso o reverso.
 3. Revisa todos los campos esperables: los localizados incluyen su valor y confianza; los no localizados se indican expresamente.
-4. Selecciona los que quieras ocultar y usa “Ajustar posiciones” si alguna caja necesita una corrección.
+4. Selecciona los que quieras ocultar y usa “Mover y redimensionar zonas” si alguna caja necesita una corrección.
+   También puedes pulsar el icono “Mover” de un campo y arrastrar directamente su censura; la esquina inferior derecha permite redimensionarla.
 5. También puedes añadir cualquier zona manual que no se haya localizado correctamente.
 6. Configura una marca de agua repetida, central, diagonal o al pie.
 7. Comprueba el resultado y descárgalo como JPG o PNG.

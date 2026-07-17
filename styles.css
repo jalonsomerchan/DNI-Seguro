@@ -126,6 +126,8 @@ h1 em { color: var(--green); font-style: normal; }
 .empty-fields b { color: var(--ink); font-size: 11px; }
 .field-item { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid #e0e3df; border-radius: 9px; background: white; cursor: pointer; }
 .field-item:hover { border-color: #b5c9c3; }
+.field-item.focused { border-color: var(--green); box-shadow: 0 0 0 2px rgba(14,93,80,.1); }
+.field-toggle { display: contents; cursor: pointer; }
 .field-item.missing { cursor: default; background: #f7f8f6; opacity: .78; }
 .field-item.missing:hover { border-color: #e0e3df; }
 .field-item input { position: absolute; opacity: 0; }
@@ -139,6 +141,11 @@ h1 em { color: var(--green); font-style: normal; }
 .confidence { padding: 3px 6px; border-radius: 5px; color: #34705f; background: #e8f3ef; font-size: 8px; font-weight: 700; }
 .confidence.low { color: #8a5a13; background: #fbf0d8; }
 .confidence.missing { color: #717976; background: #e8ebe9; white-space: nowrap; }
+.move-field { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; color: var(--green); background: #edf7f3; border: 1px solid #cfe5dd; border-radius: 7px; cursor: grab; }
+.move-field:hover { background: #dff0e9; border-color: #a8cdc1; }
+.move-field:active { cursor: grabbing; }
+.move-field svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+#preview-canvas.editing-zones { touch-action: none; user-select: none; }
 .add-area { width: 100%; margin: 9px 0 0; padding: 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--green); border: 1px dashed #abc4bd; border-radius: 9px; background: #f7fbf9; font-size: 10px; font-weight: 700; cursor: pointer; }
 .add-area:last-of-type { margin-bottom: 18px; }
 .add-area.active { color: white; border-style: solid; border-color: var(--green); background: var(--green); }
