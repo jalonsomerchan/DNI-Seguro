@@ -1259,6 +1259,7 @@ $$('.step').forEach(btn => btn.addEventListener('click', () => { const step=+btn
 function goToStep(step) {
   const previousStep=state.step;
   state.step=step;
+  $('#editor-view').dataset.currentStep=step;
   if(previousStep===4&&step!==4&&state.image)fitCanvas(state.image);
   if(step!==2&&state.adjustMode){
     setAdjustMode(false);
@@ -1274,7 +1275,8 @@ function goToStep(step) {
   $('#canvas-hint-text').textContent=step===1?'Puedes añadir más documentos y cambiar entre ellos desde la barra superior.':step===2?'Activa o desactiva campos y comprueba el resultado en tiempo real.':step===3?'Ajusta la marca de agua: se aplicará a todos los documentos.':'Comprueba bien todos los documentos antes de compartirlos.';
   if(step===4) updateSummary();
   render();
-  if(window.innerWidth<901) $('.control-panel').scrollIntoView({behavior:'smooth',block:'start'});
+  if(window.innerWidth<=600&&step===2) $('.editor-main').scrollIntoView({behavior:'smooth',block:'start'});
+  else if(window.innerWidth<901) $('.control-panel').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function updateSummary() {

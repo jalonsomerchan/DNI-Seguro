@@ -321,7 +321,7 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
   .hero { min-height: calc(100vh - 64px); padding: 42px 16px 28px; }
   h1 { font-size: 38px; }.hero-copy { font-size: 14px; line-height: 1.55; }.trust-row { gap: 9px 14px; margin: 20px 0 25px; }.trust-row span { font-size: 10px; }
   .upload-card { padding: 28px 18px 23px; border-radius: 18px; }.upload-actions { flex-direction: column; }.upload-actions .btn { width: 100%; }.upload-card h2 { font-size: 19px; }
-  .workspace { padding: 0 0 25px; }.stepper { padding: 14px 22px; margin: 0; background: white; }.editor-shell { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
+  .workspace { padding: 0 0 25px; }.stepper { padding: 14px 22px; margin: 0; background: white; }.editor-shell { overflow: visible; border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
   .editor-main { min-height: auto; padding: 14px; }.mobile-step-title { display: block; margin-bottom: 12px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
   .document-manager { align-items: stretch; flex-direction: column; }.document-add-actions button { flex: 1; justify-content: center; }
   .manual-section { padding: 12px; }.manual-mode-card { min-height: 72px; }.manual-mode-card b { font-size: 12px; }.manual-mode-card small { font-size: 9px; }.manual-mode-card i { padding: 7px 9px; }
@@ -329,7 +329,16 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
   .canvas-toolbar { margin-bottom: 12px; }.zoom-controls { display: none; }.doc-status b { font-size: 11px; }.doc-status small { font-size: 9px; }
   .canvas-stage { min-height: 280px; max-height: 360px; }.canvas-hint { font-size: 9px; text-align: center; }
   #preview-canvas { max-width: calc(100% - 18px); max-height: 335px; }
-  .control-panel { min-height: 430px; }.panel-step { padding: 22px 18px 18px; }.panel-nav { position: sticky; bottom: 0; z-index: 4; background: rgba(255,254,250,.94); backdrop-filter: blur(8px); padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .control-panel { min-height: 430px; padding-bottom: calc(69px + env(safe-area-inset-bottom)); }
+  .panel-step { padding: 22px 18px 18px; }
+  .panel-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; min-height: 64px; background: rgba(255,254,250,.96); box-shadow: 0 -8px 24px rgba(18,43,39,.1); backdrop-filter: blur(10px); padding: 10px 18px calc(10px + env(safe-area-inset-bottom)); }
+  #editor-view[data-current-step="2"] .editor-main { position: sticky; top: 0; z-index: 6; align-self: start; min-height: 0; padding: 10px 14px; box-shadow: 0 8px 24px rgba(18,43,39,.14); }
+  #editor-view[data-current-step="2"] .mobile-step-title,
+  #editor-view[data-current-step="2"] .document-manager,
+  #editor-view[data-current-step="2"] .canvas-toolbar,
+  #editor-view[data-current-step="2"] .canvas-hint { display: none; }
+  #editor-view[data-current-step="2"] .canvas-stage { height: clamp(190px,32dvh,280px); min-height: clamp(190px,32dvh,280px); max-height: clamp(190px,32dvh,280px); }
+  #editor-view[data-current-step="2"] #preview-canvas { max-height: calc(clamp(190px,32dvh,280px) - 18px); }
   .watermark-layouts { gap: 5px; }
   dialog { max-height: calc(100vh - 24px); overflow: auto; }.dialog-head { padding: 18px; }.guide-body { padding: 18px; }
   .camera-dialog { inset: 0; width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; margin: 0; border-radius: 0; overflow: hidden; }
