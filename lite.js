@@ -1,11 +1,13 @@
 const $ = selector => document.querySelector(selector);
 
 const lite = {
+  step: 1,
   documents: [],
   active: -1,
   brush: .07,
   drawing: null,
-  watermark: { enabled: false, text: 'COPIA PARA TRÁMITE', opacity: .24 }
+  watermark: { enabled: false, text: 'COPIA PARA TRÁMITE', opacity: .24, size: 1, layout: 'repeat', color: '#b42318' },
+  format: 'jpeg'
 };
 
 const view = $('#lite-view');
@@ -18,6 +20,7 @@ const cameraInput = $('#lite-camera-input');
 $('#open-lite').addEventListener('click', () => {
   home.classList.add('hidden');
   view.classList.remove('hidden');
+  goLiteStep(lite.documents.length ? 2 : 1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -32,8 +35,10 @@ function openCameraPicker() { document.dispatchEvent(new CustomEvent('lite:open-
 
 $('#lite-add-file').addEventListener('click', openFilePicker);
 $('#lite-empty-file').addEventListener('click', openFilePicker);
+$('#lite-panel-file').addEventListener('click', openFilePicker);
 $('#lite-add-camera').addEventListener('click', openCameraPicker);
 $('#lite-empty-camera').addEventListener('click', openCameraPicker);
+$('#lite-panel-camera').addEventListener('click', openCameraPicker);
 
 fileInput.addEventListener('change', async event => {
   await addFiles([...event.target.files]);
@@ -67,7 +72,8 @@ async function addFiles(files) {
       notify(`No se ha podido leer ${file.name}.`);
     }
   }
-  updateInterface();
+  if (lite.documents.length) goLiteStep(2);
+  else updateInterface();
 }
 
 function loadImage(file) {
@@ -83,10 +89,11 @@ function loadImage(file) {
 function updateInterface() {
   renderTabs();
   const hasDocument = lite.active >= 0;
-  $('#lite-empty').classList.toggle('hidden', hasDocument);
+  $('#lite-empty').classList.toggle('hidden', hasDocument || lite.step !== 1);
   canvas.classList.toggle('hidden', !hasDocument);
-  $('#lite-touch-hint').classList.toggle('hidden', !hasDocument);
-  $('#lite-download').disabled = !lite.documents.length;
+  $('#lite-touch-hint').classList.toggle('hidden', !hasDocument || lite.step !== 2);
+  $('#lite-result-label').classList.toggle('hidden', lite.step !== 5);
+  canvas.style.cursor = lite.step === 2 ? 'crosshair' : 'default';
   $('#lite-count').textContent = lite.documents.length
     ? `${lite.documents.length} ${lite.documents.length === 1 ? 'documento añadido' : 'documentos añadidos'} · se descargarán juntos`
     : 'Aún no has añadido documentos';
@@ -101,9 +108,42 @@ function renderTabs() {
   ).join('');
   tabs.querySelectorAll('[data-lite-document]').forEach(button => button.addEventListener('click', () => {
     lite.active = Number(button.dataset.liteDocument);
-    updateInterface();
+    if (lite.step === 5) goLiteStep(2);
+    else updateInterface();
   }));
 }
+
+const LITE_STEP_LABELS = {
+  1: 'Paso 1 de 4 · Documento',
+  2: 'Paso 2 de 4 · Censura',
+  3: 'Paso 3 de 4 · Marca de agua',
+  4: 'Paso 4 de 4 · Más documentos',
+  5: 'Resultado · Vista previa final'
+};
+
+function goLiteStep(step) {
+  if (step > 1 && !lite.documents.length) return notify('Añade primero un documento.');
+  lite.drawing = null;
+  lite.step = Math.max(1, Math.min(5, step));
+  document.querySelectorAll('[data-lite-panel]').forEach(panel => panel.classList.toggle('active', Number(panel.dataset.litePanel) === lite.step));
+  document.querySelectorAll('[data-lite-step]').forEach(button => {
+    const number = Number(button.dataset.liteStep);
+    button.classList.toggle('active', number === lite.step);
+    button.classList.toggle('done', number < lite.step);
+  });
+  $('#lite-current-step').textContent = LITE_STEP_LABELS[lite.step];
+  if (lite.step === 5) updateResultSummary();
+  updateInterface();
+  if (window.innerWidth < 901) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.querySelectorAll('[data-lite-next]').forEach(button => button.addEventListener('click', () => goLiteStep(Number(button.dataset.liteNext))));
+document.querySelectorAll('[data-lite-prev]').forEach(button => button.addEventListener('click', () => goLiteStep(Number(button.dataset.litePrev))));
+document.querySelectorAll('[data-lite-step]').forEach(button => button.addEventListener('click', () => {
+  const step = Number(button.dataset.liteStep);
+  if (step === 1 || lite.documents.length) goLiteStep(step);
+}));
+$('#lite-finish').addEventListener('click', () => goLiteStep(5));
 
 function activeDocument() { return lite.documents[lite.active]; }
 
@@ -115,13 +155,21 @@ function fitPreview(image) {
 }
 
 function render() {
+  if (lite.step === 5 && lite.documents.length) {
+    const result = makeResultCanvas();
+    canvas.width = result.width;
+    canvas.height = result.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(result, 0, 0);
+    return;
+  }
   const document = activeDocument();
   if (!document) return;
   fitPreview(document.image);
-  renderDocument(document, canvas, ctx, canvas.width, true);
+  renderDocument(document, canvas, ctx, canvas.width, lite.step === 2, lite.step >= 3);
 }
 
-function renderDocument(document, target, targetCtx, width, includeDraft = false) {
+function renderDocument(document, target, targetCtx, width, includeDraft = false, includeWatermark = true) {
   const height = Math.round(width * document.image.naturalHeight / document.image.naturalWidth);
   target.width = width;
   target.height = height;
@@ -129,7 +177,7 @@ function renderDocument(document, target, targetCtx, width, includeDraft = false
   targetCtx.drawImage(document.image, 0, 0, width, height);
   const strokes = includeDraft && lite.drawing ? [...document.strokes, lite.drawing] : document.strokes;
   drawBlurredStrokes(document.image, strokes, targetCtx, width, height);
-  if (lite.watermark.enabled && lite.watermark.text.trim()) drawLiteWatermark(targetCtx, width, height);
+  if (includeWatermark && lite.watermark.enabled && lite.watermark.text.trim()) drawLiteWatermark(targetCtx, width, height);
 }
 
 function drawBlurredStrokes(image, strokes, targetCtx, width, height) {
@@ -174,20 +222,38 @@ function drawBlurredStrokes(image, strokes, targetCtx, width, height) {
 
 function drawLiteWatermark(targetCtx, width, height) {
   const text = lite.watermark.text.trim().toUpperCase();
-  const fontSize = Math.max(18, width * .038);
+  const fontSize = Math.max(18, width * .038 * lite.watermark.size);
   targetCtx.save();
-  targetCtx.translate(width / 2, height / 2);
-  targetCtx.rotate(-Math.PI / 7);
   targetCtx.font = `800 ${fontSize}px Manrope, sans-serif`;
   targetCtx.textAlign = 'center';
   targetCtx.textBaseline = 'middle';
-  targetCtx.fillStyle = `rgba(180,35,24,${lite.watermark.opacity})`;
-  const stepX = Math.max(width * .48, targetCtx.measureText(text).width + fontSize * 2);
-  const stepY = fontSize * 3.8;
-  for (let y = -height; y <= height; y += stepY) {
-    for (let x = -width; x <= width; x += stepX) targetCtx.fillText(text, x, y);
+  targetCtx.fillStyle = hexToRgba(lite.watermark.color, lite.watermark.opacity);
+  if (lite.watermark.layout === 'repeat') {
+    targetCtx.translate(width / 2, height / 2);
+    targetCtx.rotate(-Math.PI / 7);
+    const stepX = Math.max(width * .48, targetCtx.measureText(text).width + fontSize * 2);
+    const stepY = fontSize * 3.8;
+    for (let y = -height; y <= height; y += stepY) {
+      for (let x = -width; x <= width; x += stepX) targetCtx.fillText(text, x, y);
+    }
+  } else if (lite.watermark.layout === 'center') {
+    targetCtx.font = `800 ${fontSize * 1.6}px Manrope, sans-serif`;
+    targetCtx.fillText(text, width / 2, height / 2);
+  } else if (lite.watermark.layout === 'diagonal') {
+    targetCtx.translate(width / 2, height / 2);
+    targetCtx.rotate(-Math.PI / 7);
+    targetCtx.font = `800 ${fontSize * 1.45}px Manrope, sans-serif`;
+    targetCtx.fillText(text, 0, 0);
+  } else {
+    targetCtx.font = `800 ${fontSize * .82}px Manrope, sans-serif`;
+    targetCtx.fillText(text, width / 2, height - fontSize * 1.1);
   }
   targetCtx.restore();
+}
+
+function hexToRgba(hex, alpha) {
+  const value = parseInt(hex.slice(1), 16);
+  return `rgba(${value >> 16},${(value >> 8) & 255},${value & 255},${alpha})`;
 }
 
 function canvasPoint(event) {
@@ -199,7 +265,7 @@ function canvasPoint(event) {
 }
 
 canvas.addEventListener('pointerdown', event => {
-  if (!activeDocument()) return;
+  if (!activeDocument() || lite.step !== 2) return;
   event.preventDefault();
   lite.drawing = { size: lite.brush, points: [canvasPoint(event)] };
   canvas.setPointerCapture(event.pointerId);
@@ -269,6 +335,34 @@ $('#lite-watermark-opacity').addEventListener('input', event => {
   render();
 });
 
+$('#lite-watermark-size').addEventListener('input', event => {
+  lite.watermark.size = Number(event.target.value) / 100;
+  $('#lite-size-label').textContent = `${event.target.value}%`;
+  render();
+});
+
+document.querySelectorAll('[data-lite-watermark]').forEach(button => button.addEventListener('click', () => {
+  lite.watermark.layout = button.dataset.liteWatermark;
+  document.querySelectorAll('[data-lite-watermark]').forEach(item => item.classList.toggle('active', item === button));
+  render();
+}));
+
+document.querySelectorAll('[data-lite-color]').forEach(button => button.addEventListener('click', () => {
+  lite.watermark.color = button.dataset.liteColor;
+  document.querySelectorAll('[data-lite-color]').forEach(item => item.classList.toggle('active', item === button));
+  render();
+}));
+
+document.querySelectorAll('[data-lite-format]').forEach(button => button.addEventListener('click', () => {
+  lite.format = button.dataset.liteFormat;
+  document.querySelectorAll('[data-lite-format]').forEach(item => item.classList.toggle('active', item === button));
+}));
+
+function updateResultSummary() {
+  const strokes = lite.documents.reduce((total, item) => total + item.strokes.length, 0);
+  $('#lite-result-summary').innerHTML = `<div><span>Documentos</span><b>${lite.documents.length}</b></div><div><span>Zonas censuradas</span><b>${strokes}</b></div><div><span>Marca de agua</span><b>${lite.watermark.enabled ? 'Aplicada' : 'Sin marca'}</b></div>`;
+}
+
 function makeResultCanvas() {
   const maximumWidth = Math.min(1800, Math.max(...lite.documents.map(item => item.image.naturalWidth)));
   const heights = lite.documents.map(item => Math.round(maximumWidth * item.image.naturalHeight / item.image.naturalWidth));
@@ -281,7 +375,7 @@ function makeResultCanvas() {
   let offsetY = 0;
   lite.documents.forEach((item, index) => {
     const page = document.createElement('canvas');
-    renderDocument(item, page, page.getContext('2d'), maximumWidth);
+    renderDocument(item, page, page.getContext('2d'), maximumWidth, false, true);
     resultCtx.drawImage(page, 0, offsetY);
     offsetY += heights[index];
   });
@@ -294,20 +388,22 @@ $('#lite-download').addEventListener('click', () => {
   button.disabled = true;
   button.textContent = 'Preparando…';
   try {
+    const mime = lite.format === 'png' ? 'image/png' : 'image/jpeg';
+    const extension = lite.format === 'png' ? 'png' : 'jpg';
     makeResultCanvas().toBlob(blob => {
       if (!blob) {
         notify('No se ha podido generar el resultado.');
       } else {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = lite.documents.length === 1 ? `${lite.documents[0].name}-lite.jpg` : 'documentos-protegidos-lite.jpg';
+        link.download = lite.documents.length === 1 ? `${lite.documents[0].name}-lite.${extension}` : `documentos-protegidos-lite.${extension}`;
         link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 1500);
         notify('Resultado descargado en tu dispositivo.');
       }
       button.innerHTML = '<svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar resultado';
       button.disabled = false;
-    }, 'image/jpeg', .94);
+    }, mime, .94);
   } catch {
     button.innerHTML = '<svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar resultado';
     button.disabled = false;

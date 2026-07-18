@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=58" />
+    <link rel="stylesheet" href="styles.css?v=59" />
   </head>
   <body>
     <header class="site-header">
@@ -207,47 +207,83 @@
           <div class="lite-private"><span></span>100% local</div>
         </div>
 
+        <nav class="lite-stepper" aria-label="Progreso de la versión Lite">
+          <button type="button" class="active" data-lite-step="1"><span>1</span><b>Documento</b></button><i></i>
+          <button type="button" data-lite-step="2"><span>2</span><b>Censura</b></button><i></i>
+          <button type="button" data-lite-step="3"><span>3</span><b>Marca de agua</b></button><i></i>
+          <button type="button" data-lite-step="4"><span>4</span><b>Más documentos</b></button><i></i>
+          <button type="button" data-lite-step="5"><span><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></span><b>Resultado</b></button>
+        </nav>
+
         <div class="lite-shell">
           <div class="lite-editor">
             <div class="lite-document-bar">
               <div class="lite-tabs" id="lite-tabs" aria-label="Documentos"></div>
-              <div class="lite-add-actions">
-                <button type="button" id="lite-add-file"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Añadir documento</button>
-                <button type="button" id="lite-add-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Hacer foto</button>
-              </div>
+              <span class="lite-current-step" id="lite-current-step">Paso 1 de 4 · Documento</span>
             </div>
 
             <div class="lite-canvas-wrap" id="lite-canvas-wrap">
               <div class="lite-empty" id="lite-empty">
                 <span><svg viewBox="0 0 64 64"><rect x="10" y="15" width="44" height="34" rx="5"/><circle cx="23" cy="30" r="6"/><path d="M15 44c1.7-7 5.4-10.5 11-10.5S35.3 37 37 44M40 25h9M40 31h9M40 37h6"/></svg></span>
-                <h2>Haz una foto del documento</h2>
-                <p>Después pasa el dedo por encima de los datos que quieras ocultar.</p>
+                <h2>Haz una foto o adjunta el documento</h2>
+                <p>La cámara te ayudará a encajarlo dentro del marco antes de continuar.</p>
                 <div><button type="button" class="btn btn-primary" id="lite-empty-camera">Hacer una foto</button><button type="button" class="btn btn-secondary" id="lite-empty-file">Elegir imagen</button></div>
               </div>
               <canvas id="lite-canvas" class="hidden" aria-label="Documento. Pinta encima para difuminar datos."></canvas>
               <div class="lite-touch-hint hidden" id="lite-touch-hint"><svg viewBox="0 0 20 20"><path d="M7 10V6a1.5 1.5 0 0 1 3 0v3-5a1.5 1.5 0 0 1 3 0v5-2a1.5 1.5 0 0 1 3 0v5c0 3-2 5-5 5H9c-2.4 0-4-1.3-5.2-3L2.5 12a1.5 1.5 0 0 1 2.4-1.7L7 12"/></svg>Desliza el dedo o el ratón sobre los datos</div>
+              <div class="lite-result-label hidden" id="lite-result-label"><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg>Vista previa final</div>
             </div>
           </div>
 
           <aside class="lite-controls">
-            <div class="lite-step"><span>1</span><div><b>Emborrona los datos</b><small>Pinta directamente sobre el documento.</small></div></div>
-            <label class="lite-range"><span>Grosor del dedo <b id="lite-brush-label">Medio</b></span><input id="lite-brush-size" type="range" min="3" max="12" value="7" /></label>
-            <div class="lite-edit-actions"><button type="button" id="lite-undo" disabled>Deshacer</button><button type="button" id="lite-clear" disabled>Limpiar todo</button></div>
+            <section class="lite-panel active" data-lite-panel="1">
+              <div class="lite-panel-heading"><span>01</span><div><h2>Añade el documento</h2><p>Haz una foto con el marco de cámara o elige una imagen.</p></div></div>
+              <div class="lite-capture-actions"><button type="button" class="btn btn-primary" id="lite-panel-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Hacer una foto</button><button type="button" class="btn btn-secondary" id="lite-panel-file"><svg viewBox="0 0 20 20"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>Elegir imagen</button></div>
+              <div class="local-note"><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.4c0 3.8-2.5 6.3-6 7.6-3.5-1.3-6-3.8-6-7.6V5l6-2.5Z"/><path d="M7.5 9.5h5v4h-5zM8.5 9.5v-1a1.5 1.5 0 0 1 3 0v1"/></svg><span><b>La imagen permanece en tu dispositivo</b>No se envía a ningún servidor.</span></div>
+            </section>
 
-            <div class="lite-divider"></div>
-            <div class="lite-step"><span>2</span><div><b>Marca de agua</b><small>Opcional, para limitar otros usos.</small></div></div>
-            <label class="toggle-row lite-toggle"><span><b>Añadir marca de agua</b><small>Se aplicará a todos los documentos</small></span><input type="checkbox" id="lite-watermark-enabled" /><i></i></label>
-            <div class="lite-watermark-controls hidden" id="lite-watermark-controls">
-              <label for="lite-watermark-text">Texto</label>
-              <input id="lite-watermark-text" maxlength="60" value="COPIA PARA TRÁMITE" />
-              <label class="lite-range"><span>Intensidad <b id="lite-opacity-label">24%</b></span><input id="lite-watermark-opacity" type="range" min="10" max="55" value="24" /></label>
-            </div>
+            <section class="lite-panel" data-lite-panel="2">
+              <div class="lite-panel-heading"><span>02</span><div><h2>Censura con el dedo</h2><p>Pinta directamente sobre cualquier dato que quieras ocultar.</p></div></div>
+              <label class="lite-range"><span>Grosor del dedo <b id="lite-brush-label">Medio</b></span><input id="lite-brush-size" type="range" min="3" max="12" value="7" /></label>
+              <div class="lite-edit-actions"><button type="button" id="lite-undo" disabled>Deshacer</button><button type="button" id="lite-clear" disabled>Limpiar todo</button></div>
+              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="1">Anterior</button><button type="button" class="btn btn-primary" data-lite-next="3">Continuar</button></div>
+            </section>
 
-            <div class="lite-divider"></div>
-            <div class="lite-step"><span>3</span><div><b>Añade más y descarga</b><small>Los documentos se unirán en una imagen.</small></div></div>
-            <div class="lite-count" id="lite-count">Aún no has añadido documentos</div>
-            <button type="button" class="btn btn-primary lite-download" id="lite-download" disabled><svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar resultado</button>
-            <small class="lite-review-note">Revisa que ningún dato sensible siga visible antes de compartir.</small>
+            <section class="lite-panel" data-lite-panel="3">
+              <div class="lite-panel-heading"><span>03</span><div><h2>Añade una marca de agua</h2><p>Opcional. Configúrala igual que en la versión completa.</p></div></div>
+              <label class="toggle-row lite-toggle"><span><b>Usar marca de agua</b><small>Se aplicará a todos los documentos</small></span><input type="checkbox" id="lite-watermark-enabled" /><i></i></label>
+              <div class="lite-watermark-controls hidden" id="lite-watermark-controls">
+                <label for="lite-watermark-text">Texto</label><input id="lite-watermark-text" maxlength="60" value="COPIA PARA TRÁMITE" />
+                <label>Distribución</label>
+                <div class="lite-watermark-layouts">
+                  <button type="button" class="active" data-lite-watermark="repeat"><span class="wm-preview repeat">USO · USO<br/>USO · USO</span><b>Repetida</b></button>
+                  <button type="button" data-lite-watermark="center"><span class="wm-preview center">USO</span><b>Centro</b></button>
+                  <button type="button" data-lite-watermark="diagonal"><span class="wm-preview diagonal">USO</span><b>Diagonal</b></button>
+                  <button type="button" data-lite-watermark="footer"><span class="wm-preview footer">USO</span><b>Pie</b></button>
+                </div>
+                <label class="lite-range"><span>Tamaño del texto <b id="lite-size-label">100%</b></span><input id="lite-watermark-size" type="range" min="50" max="180" value="100" /></label>
+                <label class="lite-range"><span>Intensidad <b id="lite-opacity-label">24%</b></span><input id="lite-watermark-opacity" type="range" min="10" max="60" value="24" /></label>
+                <label>Color</label><div class="lite-color-options"><button type="button" class="active" data-lite-color="#b42318" style="--swatch:#b42318" aria-label="Rojo"></button><button type="button" data-lite-color="#111827" style="--swatch:#111827" aria-label="Negro"></button><button type="button" data-lite-color="#1d4ed8" style="--swatch:#1d4ed8" aria-label="Azul"></button><button type="button" data-lite-color="#ffffff" style="--swatch:#ffffff" aria-label="Blanco"></button></div>
+              </div>
+              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="2">Anterior</button><button type="button" class="btn btn-primary" data-lite-next="4">Continuar</button></div>
+            </section>
+
+            <section class="lite-panel" data-lite-panel="4">
+              <div class="lite-panel-heading"><span>04</span><div><h2>¿Otro documento?</h2><p>Añádelo ahora o finaliza para revisar el resultado.</p></div></div>
+              <div class="lite-count" id="lite-count">Aún no has añadido documentos</div>
+              <div class="lite-more-actions"><button type="button" id="lite-add-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Fotografiar otro</button><button type="button" id="lite-add-file"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Adjuntar otro</button></div>
+              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="3">Anterior</button><button type="button" class="btn btn-primary" id="lite-finish">Finalizar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg></button></div>
+            </section>
+
+            <section class="lite-panel lite-result-panel" data-lite-panel="5">
+              <div class="success-mark"><svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.5 12 2.2 2.2 4.8-4.9"/></svg></div>
+              <h2>Resultado listo</h2><p>Revisa la vista previa antes de descargar.</p>
+              <div class="lite-result-summary" id="lite-result-summary"></div>
+              <label>Formato de descarga</label><div class="lite-format-selector"><button type="button" class="active" data-lite-format="jpeg">JPG <small>Más ligero</small></button><button type="button" data-lite-format="png">PNG <small>Más calidad</small></button></div>
+              <button type="button" class="btn btn-primary lite-download" id="lite-download"><svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar resultado</button>
+              <button type="button" class="lite-result-back" data-lite-prev="4">Volver y editar</button>
+              <small class="lite-review-note">Comprueba que ningún dato sensible siga visible antes de compartir.</small>
+            </section>
           </aside>
         </div>
 
@@ -305,7 +341,7 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="m6.8 10 2.1 2.1 4.4-4.5"/></svg><span></span></div>
-    <script src="app.js?v=58" type="module"></script>
-    <script src="lite.js?v=2" type="module"></script>
+    <script src="app.js?v=59" type="module"></script>
+    <script src="lite.js?v=3" type="module"></script>
   </body>
 </html>

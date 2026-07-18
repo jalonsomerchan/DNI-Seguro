@@ -58,5 +58,6 @@ No hay proceso de compilación ni dependencias que instalar.
 1. Pulsa “Usar versión Lite” en la portada.
 2. Haz una foto encajando el documento dentro del marco de cámara, o elige una imagen.
 3. Pinta con el dedo o el ratón sobre cualquier dato que quieras emborronar; puedes cambiar el grosor, deshacer o limpiar los trazos.
-4. Activa, si quieres, una marca de agua y personaliza el texto y la intensidad.
-5. Añade más documentos y descarga el resultado. Todas las imágenes se unen verticalmente en un único JPG.
+4. Activa, si quieres, una marca de agua y personaliza texto, distribución, color, tamaño e intensidad.
+5. Añade otro documento —que volverá al paso de censura— o pulsa “Finalizar”.
+6. Revisa la composición final y descárgala como JPG o PNG. Todas las imágenes se unen verticalmente.
