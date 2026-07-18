@@ -2,6 +2,11 @@
 
 Aplicación web para censurar uno o varios DNI españoles (3.0 o posteriores), añadir una marca de agua y generar una copia protegida.
 
+Incluye dos modos:
+
+- **Completo:** analiza el documento localmente con OCR, propone campos y permite ajustar las zonas.
+- **Lite:** abre la cámara o una imagen sin análisis, permite difuminar datos pintando con el dedo o el ratón, añadir una marca de agua opcional, combinar varios documentos y descargar una única imagen.
+
 ## Privacidad
 
 - No existe backend ni se suben imágenes a servidores.
@@ -45,3 +50,11 @@ No hay proceso de compilación ni dependencias que instalar.
 8. Descarga el resultado como JPG/PNG, compártelo mediante el menú del sistema o usa “Guardar en Fotos” en iPhone.
 
 > Antes de compartir, revisa visualmente que todos los datos sensibles estén ocultos. Cuando una zona no pueda situarse con suficiente seguridad, utiliza el modo manual antes de exportar.
+
+### Versión Lite
+
+1. Pulsa “Usar versión Lite” en la portada.
+2. Haz una foto o elige una imagen.
+3. Pinta con el dedo o el ratón sobre cualquier dato que quieras difuminar; puedes cambiar el grosor, deshacer o limpiar los trazos.
+4. Activa, si quieres, una marca de agua y personaliza el texto y la intensidad.
+5. Añade más documentos y descarga el resultado. Todas las imágenes se unen verticalmente en un único JPG.
