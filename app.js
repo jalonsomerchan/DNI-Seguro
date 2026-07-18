@@ -116,6 +116,12 @@ const canvas = $('#preview-canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const processing = $('#processing-overlay');
 
+$('#open-ocr').addEventListener('click',()=>{
+  dropZone.classList.remove('hidden');
+  dropZone.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('#choose-file').focus(),450);
+});
+
 $('#choose-file').addEventListener('click', () => {state.pendingAppend=false;$('#file-input').click();});
 $('#take-photo').addEventListener('click',()=>{state.pendingAppend=false;openCamera('full');});
 $('#file-input').addEventListener('change', async e => {await handleFiles([...e.target.files]);e.target.value='';});
@@ -1315,8 +1321,3 @@ guide.addEventListener('click',e=>{if(e.target===guide)guide.close();});
 
 function toast(message) { const el=$('#toast');$('span',el).textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),3200); }
 function escapeHtml(value='') { return value.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-
-// Presentamos la guía la primera vez. Solo se guarda esta preferencia, nunca imágenes.
-if (!localStorage.getItem('dni-seguro-guide-seen')) {
-  setTimeout(() => { guide.showModal(); localStorage.setItem('dni-seguro-guide-seen','1'); }, 650);
-}
