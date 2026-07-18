@@ -1,6 +1,6 @@
 # DNI Seguro
 
-Aplicación web para censurar datos de un DNI español (3.0 o posterior), añadir una marca de agua y descargar una copia protegida.
+Aplicación web para censurar uno o varios DNI españoles (3.0 o posteriores), añadir una marca de agua y generar una copia protegida.
 
 ## Privacidad
 
@@ -11,7 +11,7 @@ Aplicación web para censurar datos de un DNI español (3.0 o posterior), añadi
 - El OCR se ejecuta en el navegador mediante Tesseract.js.
 - El recorte automático combina las cajas del OCR con los bordes visibles de la fotografía para eliminar el fondo sin usar una plantilla de coordenadas.
 - La orientación se corrige automáticamente para documentos girados 90°, 180° o 270°; las rotaciones adicionales solo se prueban cuando la primera lectura no es coherente.
-- Se realizan dos lecturas OCR complementarias y una tercera binarización adaptativa solo cuando faltan campos, para recuperar etiquetas pequeñas sin penalizar siempre el rendimiento.
+- Se realizan lecturas OCR complementarias y, en el reverso moderno, una lectura específica de la franja vertical de “Equipo”. La binarización adaptativa solo se usa cuando faltan campos.
 - Las posiciones no proceden de una plantilla: se calculan con las cajas de texto devueltas por el OCR.
 - Las etiquetas se relacionan con sus valores por proximidad, líneas de texto y contenido MRZ.
 - En imágenes que contienen las dos caras se realiza una segunda pasada sobre cada región detectada.
@@ -39,8 +39,9 @@ No hay proceso de compilación ni dependencias que instalar.
    En el anverso se censura inicialmente todo salvo nombre, apellidos, fecha de nacimiento y número de DNI. En el reverso se censura todo salvo el código MRZ.
 4. Selecciona los que quieras ocultar y usa “Mover y redimensionar zonas” si alguna caja necesita una corrección.
    También puedes pulsar el icono “Mover” de un campo y arrastrar directamente su censura; la esquina inferior derecha permite redimensionarla.
-5. También puedes añadir cualquier zona manual que no se haya localizado correctamente.
-6. Configura una marca de agua repetida, central, diagonal o al pie.
-7. Comprueba el resultado y descárgalo como JPG o PNG.
+5. Activa “Censurar manualmente” y elige Rectángulo o Pincel. Puedes pintar con el dedo o el ratón, ajustar el grosor, deshacer y eliminar zonas individuales o todas las manuales.
+6. Añade más caras o documentos desde la barra superior o desde la pantalla final. La exportación los coloca en una sola imagen vertical.
+7. Configura una marca de agua repetida, central, diagonal o al pie, incluyendo su tamaño e intensidad.
+8. Descarga el resultado como JPG/PNG, compártelo mediante el menú del sistema o usa “Guardar en Fotos” en iPhone.
 
-> Antes de compartir, revisa visualmente que todos los datos sensibles estén ocultos. Si un texto no existe en la salida OCR por desenfoque, reflejos o resolución insuficiente, la aplicación no inventa su posición: utiliza “Añadir zona manual”.
+> Antes de compartir, revisa visualmente que todos los datos sensibles estén ocultos. Cuando una zona no pueda situarse con suficiente seguridad, utiliza el modo manual antes de exportar.

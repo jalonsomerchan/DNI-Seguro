@@ -48,7 +48,8 @@ const state = {
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
   cropApplied: false, rotationApplied: false, focusedField: null, rendering: false,
   cameraStream: null, cameraFacing: 'environment', cameraFramed: false,
-  documents: [], activeDocument: -1, pendingAppend: false, processingDocument: false
+  documents: [], activeDocument: -1, pendingAppend: false, processingDocument: false,
+  manualTool: 'rect', manualBrushSize: .035
 };
 
 const DOCUMENT_STATE_KEYS=['side','image','originalImage','fileName','fields','ocrText','ocrWords','ocrLayout','photoField','cropApplied','rotationApplied','cameraFramed'];
@@ -393,9 +394,9 @@ async function analyseLocally(file) {
     state.ocrText=combinedText;
     state.ocrWords=mappedWords;
     state.ocrLayout = makeOcrLayout(state.ocrWords);
-    if(location.hostname==='127.0.0.1')document.documentElement.dataset.ocrDebug=JSON.stringify(state.ocrLayout.lines.map(line=>({text:line.text,normalized:line.normalized,bbox:line.bbox})));
     state.photoField = await detectPortraitField();
     detectedSide = detectSide(state.ocrText, state.ocrLayout) || detectedSide;
+    if(detectedSide==='front'&&!state.photoField)state.photoField=inferPortraitField(state.ocrLayout);
     setSide(detectedSide, false);
     updateOcrStatus();
   } catch (error) {
@@ -590,7 +591,7 @@ function editDistance(a,b) {
 
 function tokenMatches(value,target) {
   if(value.includes('<'))return false;
-  return value===target||(value.length<=target.length+3&&value.includes(target))||(target.length>=8&&editDistance(value,target)<=2)||(target.length>=5&&editDistance(value,target)<=1);
+  return value===target||(value.length<=target.length+3&&value.includes(target))||(['HIJO','HIJA'].includes(target)&&editDistance(value,target)<=2)||(target.length>=8&&editDistance(value,target)<=2)||(target.length>=5&&editDistance(value,target)<=1);
 }
 
 function patternMatch(line, pattern) {
@@ -665,8 +666,8 @@ function locateValue(anchor, allAnchors, layout) {
 }
 
 function cleanFieldWords(schema,words=[]){
-  const stop=new Set(['DOCUMENTO','NACIONAL','IDENTIDAD','ESPANA','REINO','APELLIDOS','APELLIDO','NOMBRE','SEXO','NACIONALIDAD','NACIMIENTO','EMISION','VALIDEZ','SOPORTE','NUM','DNI','CARD','IDENTITY','NATIONAL','DOMICILIO','LUGAR','HIJO','HIJA','HIJOJA','PROGENITORES','EQUIPO','ADDRESS','PLACE','PARENTS']);
-  if(['surname','surname1','surname2','name'].includes(schema.id))return words.filter(word=>{const value=normalizeText(word.text);return /^[A-Z]{2,}$/.test(value)&&!stop.has(value);}).slice(0,schema.id==='name'?2:3);
+  const stop=new Set(['DOCUMENTO','NACIONAL','IDENTIDAD','ESPANA','REINO','ESP','APELLIDOS','APELLIDO','NOMBRE','SEXO','NACIONALIDAD','NACIMIENTO','EMISION','VALIDEZ','SOPORTE','NUM','DNI','CARD','IDENTITY','NATIONAL','DOMICILIO','LUGAR','HIJO','HIJA','HIJOJA','PROGENITORES','EQUIPO','ADDRESS','PLACE','PARENTS']);
+  if(['surname','surname1','surname2','name'].includes(schema.id))return words.filter(word=>{const value=normalizeText(word.text);return /^[A-Z]{3,}$/.test(value)&&!stop.has(value);}).slice(0,schema.id==='name'?2:3);
   if(schema.id==='sex')return words.filter(word=>/^[MF]$/.test(normalizeText(word.text))).slice(0,1);
   if(schema.id==='nationality')return words.filter(word=>normalizeText(word.text)==='ESP').slice(0,1);
   if(schema.id==='support')return words.filter(word=>/^[A-Z]{2,4}\d{5,9}$/.test(normalizeText(word.text).replace(/ /g,''))).slice(0,1);
@@ -840,6 +841,24 @@ function backDerivedFields(layout,found) {
   return derived;
 }
 
+function modernBackDerivedFields(layout){
+  const birthSchema=FIELD_SCHEMAS.back.find(schema=>schema.id==='birthPlace'),parentsSchema=FIELD_SCHEMAS.back.find(schema=>schema.id==='parents'),birthAnchor=findAnchors(birthSchema,layout)[0];
+  if(!birthAnchor)return [];
+  const parentsAnchor=findAnchors(parentsSchema,layout)[0],m=layout.medianHeight,allWords=layout.lines.flatMap(line=>line.words),derived=[];
+  const stop=new Set(['LUGAR','DE','NACIMIENTO','EQUIPO','ES','DNI','HIJO','HIJA','HIJOJA','MIJOA']);
+  const placeWords=allWords.filter(word=>{const value=normalizeText(word.text),cx=(word.bbox.x0+word.bbox.x1)/2,cy=(word.bbox.y0+word.bbox.y1)/2;return cy>birthAnchor.bbox.y0+m*.45&&cy<(parentsAnchor?.bbox.y0||birthAnchor.bbox.y1+m*6)&&cx>birthAnchor.bbox.x0-m*2&&/^[A-Z]{3,}$/.test(value)&&!stop.has(value);});
+  const placeGroups=groupWordsByVisualLine(placeWords,m).slice(0,2);
+  if(placeGroups[0])derived.push({id:'birthPlace',label:'Lugar de nacimiento',hint:placeGroups[0].map(word=>word.text).join(' '),box:boxFromWords(placeGroups[0],layout),selected:true,confidence:Math.round(placeGroups[0].reduce((sum,word)=>sum+(word.confidence||0),0)/placeGroups[0].length)});
+  if(placeGroups[1])derived.push({id:'birthProvince',label:'Provincia/país de nacimiento',hint:placeGroups[1].map(word=>word.text).join(' '),box:boxFromWords(placeGroups[1],layout),selected:true,confidence:Math.round(placeGroups[1].reduce((sum,word)=>sum+(word.confidence||0),0)/placeGroups[1].length)});
+  const addressCandidates=allWords.filter(word=>{const value=normalizeText(word.text),cx=(word.bbox.x0+word.bbox.x1)/2,cy=(word.bbox.y0+word.bbox.y1)/2;return cy<birthAnchor.bbox.y0-m*.2&&cy>m*.8&&cx>birthAnchor.bbox.x0-m*2&&value&&!['LUGAR','NACIMIENTO','DNI'].includes(value);});
+  const addressGroups=groupWordsByVisualLine(addressCandidates,m).slice(-3);
+  if(addressGroups.length){const addressWords=addressGroups.flat();derived.push({id:'address',label:'Domicilio',hint:addressGroups.map(group=>group.map(word=>word.text).join(' ')).join(' · ').slice(0,48),box:boxFromWords(addressWords,layout),selected:true,confidence:Math.round(addressWords.reduce((sum,word)=>sum+(word.confidence||0),0)/addressWords.length)});}
+  if(addressGroups.length>=2){const cityWords=addressGroups.at(-2);derived.push({id:'city',label:'Lugar de domicilio',hint:cityWords.map(word=>word.text).join(' '),box:boxFromWords(cityWords,layout),selected:true,confidence:Math.round(cityWords.reduce((sum,word)=>sum+(word.confidence||0),0)/cityWords.length)});}
+  if(addressGroups.length>=3){const provinceWords=addressGroups.at(-1);derived.push({id:'province',label:'Provincia/país',hint:provinceWords.map(word=>word.text).join(' '),box:boxFromWords(provinceWords,layout),selected:true,confidence:Math.round(provinceWords.reduce((sum,word)=>sum+(word.confidence||0),0)/provinceWords.length)});}
+  if(parentsAnchor){const anchorCy=(parentsAnchor.bbox.y0+parentsAnchor.bbox.y1)/2,parentsWords=allWords.filter(word=>{const value=normalizeText(word.text),cx=(word.bbox.x0+word.bbox.x1)/2,cy=(word.bbox.y0+word.bbox.y1)/2;return cy>anchorCy+m*.35&&cy<anchorCy+m*3.2&&cx>parentsAnchor.bbox.x0-m&&/^[A-Z]{2,}$/.test(value)&&!stop.has(value);});if(parentsWords.length)derived.push({id:'parents',label:'Progenitores',hint:parentsWords.map(word=>word.text).join(' ').slice(0,48),box:boxFromWords(parentsWords,layout),selected:true,confidence:Math.round(parentsWords.reduce((sum,word)=>sum+(word.confidence||0),0)/parentsWords.length)});}
+  return derived;
+}
+
 function frontProximityFields(layout,found) {
   if(found.some(field=>field.id==='surname'||field.id==='surname1'||field.id==='surname2'))return [];
   const name=found.find(field=>field.id==='name');if(!name)return [];
@@ -860,10 +879,13 @@ function buildFieldsFromOcr(side) {
   });
   allAnchors.forEach(anchor=>{
     let words=cleanFieldWords(anchor.schema,locateValue(anchor,allAnchors,layout));let box;
+    const personalText=['surname','surname1','surname2','name'].includes(anchor.schema.id);
+    if(personalText){const m=layout.medianHeight,iw=state.image.naturalWidth,ih=state.image.naturalHeight,next=allAnchors.filter(other=>other!==anchor&&other.bbox.y0>anchor.bbox.y1&&Math.abs(other.bbox.x0-anchor.bbox.x0)<m*10).sort((a,b)=>a.bbox.y0-b.bbox.y0)[0],x0=Math.max(0,anchor.bbox.x0-m*.4),y0=Math.max(0,anchor.bbox.y1-m*.1),x1=Math.min(iw,Math.max(words?.length?unionBox(words).x1+m*.5:anchor.bbox.x1+m*8,anchor.bbox.x1+m*5)),y1=Math.min(ih,next?next.bbox.y0-m*.12:anchor.bbox.y1+m*(anchor.schema.maxLines||1)*2.4);if(y1>y0)box=normalizedBox({x0,y0,x1,y1});}
     if(anchor.schema.graphic&&!words?.length){
       const m=layout.medianHeight,iw=state.image.naturalWidth,ih=state.image.naturalHeight;
       box=[anchor.bbox.x0/iw,anchor.bbox.y1/ih,Math.min(iw-anchor.bbox.x0,m*18)/iw,Math.min(ih-anchor.bbox.y1,m*6)/ih];
-    }else if(words?.length)box=boxFromWords(words,layout);
+    }else if(!box&&words?.length)box=boxFromWords(words,layout);
+    else if(!box&&anchor.schema.id==='sex'){const m=layout.medianHeight;box=normalizedBox({x0:anchor.bbox.x0-m*.25,y0:anchor.bbox.y1-m*.1,x1:anchor.bbox.x0+m*2.2,y1:anchor.bbox.y1+m*2.3});}
     if(!box)return;
     const hint=words?.map(word=>word.text).join(' ').replace(/\s+/g,' ').trim()||'Elemento gráfico detectado';
     const confidence=words?.length?Math.round(words.reduce((sum,word)=>sum+(word.confidence||0),0)/words.length):null;
@@ -888,6 +910,7 @@ function buildFieldsFromOcr(side) {
   }else{
     const mrzLines=findMrzLines(layout);if(mrzLines.length){const words=mrzLines.flatMap(line=>line.words).filter(word=>normalizeText(word.text));found.push({id:'mrz',label:'Código MRZ',hint:`${mrzLines.length} líneas de lectura mecánica`,box:boxFromWords(words,layout),selected:true,confidence:Math.round(words.reduce((s,w)=>s+(w.confidence||0),0)/words.length)});}
     const team=findTeamNumber(layout);if(team){const field={id:'team',label:'Equipo de expedición',hint:team.value,box:boxFromWords([team.word],layout),selected:true,confidence:Math.round(team.word.confidence||0)},index=found.findIndex(existing=>existing.id==='team');if(index>=0)found[index]=field;else found.push(field);}
+    modernBackDerivedFields(layout).forEach(field=>{const index=found.findIndex(existing=>existing.id===field.id);if(index>=0)found[index]=field;else found.push(field);});
     backDerivedFields(layout,found).forEach(field=>{if(!found.some(existing=>existing.id===field.id))found.push(field);});
   }
   const deduped=found.filter((field,index)=>!found.slice(0,index).some(previous=>previous.id===field.id));
@@ -911,6 +934,15 @@ async function detectPortraitField() {
   }catch{return null;}
 }
 
+function inferPortraitField(layout){
+  const surnameSchema=FIELD_SCHEMAS.front.find(schema=>schema.id==='surname'),nameSchema=FIELD_SCHEMAS.front.find(schema=>schema.id==='name'),anchor=findAnchors(surnameSchema,layout)[0]||findAnchors(nameSchema,layout)[0];if(!anchor)return null;
+  const iw=state.image.naturalWidth,ih=state.image.naturalHeight,m=layout.medianHeight,textRatio=anchor.bbox.x0/iw;let box;
+  if(textRatio>.34){const x0=Math.max(0,m*.7),x1=Math.max(x0+m*5,anchor.bbox.x0-m*1.1),y0=Math.max(0,anchor.bbox.y0-m*1.8),y1=Math.min(ih,ih-m*1.2);box={x0,y0,x1,y1};}
+  else{const x0=Math.min(iw-m*5,anchor.bbox.x0+m*21),x1=Math.min(iw,iw-m*.7),y0=Math.max(0,anchor.bbox.y0-m*1.8),y1=Math.min(ih,ih-m*1.2);box={x0,y0,x1,y1};}
+  if(box.x1<=box.x0||box.y1<=box.y0)return null;
+  return {id:'photo',label:'Fotografía',hint:'Zona de retrato inferida desde el bloque de texto OCR',box:normalizedBox(box),selected:true,confidence:null};
+}
+
 function updateSideUI() {
   $$('.side-option').forEach(btn => btn.classList.toggle('active', btn.dataset.side === state.side));
   $('#side-label').textContent = state.side === 'front' ? 'Anverso del DNI' : 'Reverso del DNI';
@@ -927,13 +959,15 @@ function renderFieldList() {
   }
   state.fields.forEach(field => {
     const label = document.createElement('div');
+    const hasGeometry=Boolean(field.box||field.path?.length);
     label.className = `field-item${field.missing?' missing':''}${state.focusedField===field.id?' focused':''}`;
     const confidence = field.confidence ?? null;
-    label.innerHTML = `<label class="field-toggle"><input type="checkbox" ${field.selected ? 'checked' : ''} ${field.box?'':'disabled'} data-field="${field.id}">
+    label.innerHTML = `<label class="field-toggle"><input type="checkbox" ${field.selected ? 'checked' : ''} ${hasGeometry?'':'disabled'} data-field="${field.id}">
       <span class="field-check"><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></span>
       <span class="field-copy"><b>${escapeHtml(field.label)}</b><small>${escapeHtml(field.hint)}</small></span></label>
       ${field.manual ? '' : `<span class="confidence ${field.missing?'missing':confidence !== null && confidence < 70 ? 'low' : ''}">${field.missing?'No localizado':confidence === null ? 'Localizado' : `${confidence}%`}</span>`}
-      ${field.box?`<button type="button" class="move-field" data-move-field="${field.id}" aria-label="Mover ${escapeHtml(field.label)}"><svg viewBox="0 0 20 20"><path d="M10 2.5v15M2.5 10h15M10 2.5 7.5 5M10 2.5 12.5 5M17.5 10 15 7.5M17.5 10 15 12.5M10 17.5 7.5 15M10 17.5 12.5 15M2.5 10 5 7.5M2.5 10 5 12.5"/></svg></button>`:''}`;
+      ${field.box?`<button type="button" class="move-field" data-move-field="${field.id}" aria-label="Mover ${escapeHtml(field.label)}"><svg viewBox="0 0 20 20"><path d="M10 2.5v15M2.5 10h15M10 2.5 7.5 5M10 2.5 12.5 5M17.5 10 15 7.5M17.5 10 15 12.5M10 17.5 7.5 15M10 17.5 12.5 15M2.5 10 5 7.5M2.5 10 5 12.5"/></svg></button>`:''}
+      ${field.manual?`<button type="button" class="delete-field" data-delete-field="${field.id}" aria-label="Eliminar ${escapeHtml(field.label)}"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 3.5h4M6 6l.7 10h6.6L14 6M8.5 9v4M11.5 9v4"/></svg></button>`:''}`;
     list.appendChild(label);
   });
   $$('input[data-field]', list).forEach(input => input.addEventListener('change', () => {
@@ -945,9 +979,10 @@ function renderFieldList() {
     field.selected=true;setAdjustMode(true,field.id);renderFieldList();render();
     $('#canvas-stage').scrollIntoView({behavior:'smooth',block:'center'});toast('Arrastra la zona sobre el documento. Usa la esquina para cambiar su tamaño.');
   }));
+  $$('[data-delete-field]',list).forEach(button=>button.addEventListener('click',()=>{state.fields=state.fields.filter(field=>field.id!==button.dataset.deleteField);renderFieldList();render();toast('Zona manual eliminada.');}));
 }
 
-$('#select-all').addEventListener('click', () => { state.fields.forEach(f => f.selected = Boolean(f.box)); renderFieldList(); render(); });
+$('#select-all').addEventListener('click', () => { state.fields.forEach(f => f.selected = Boolean(f.box||f.path?.length)); renderFieldList(); render(); });
 $('#clear-all').addEventListener('click', () => { state.fields.forEach(f => f.selected = false); renderFieldList(); render(); });
 
 function setAdjustMode(enabled,focusedField=null){
@@ -955,8 +990,7 @@ function setAdjustMode(enabled,focusedField=null){
   state.focusedField=enabled?focusedField:null;
   state.manualMode = false;
   $('#adjust-fields').classList.toggle('active', state.adjustMode);
-  $('#add-area').classList.remove('active');
-  $('#add-area').innerHTML = '<svg viewBox="0 0 20 20"><path d="M4 15.5 7.2 15l7.9-7.9-2.3-2.3-7.9 7.9L4 15.5Z"/><path d="m11.6 6 2.3 2.3M4 15.5h3.2"/></svg><span><b>Activar modo manual</b><small>Pinta con el dedo o arrastra con el ratón sobre cada zona que quieras censurar.</small></span>';
+  updateManualUI();
   canvas.style.cursor = state.adjustMode ? 'move' : 'default';
   canvas.classList.toggle('editing-zones',state.adjustMode);
   $('#canvas-hint-text').textContent = state.adjustMode
@@ -969,22 +1003,34 @@ $('#adjust-fields').addEventListener('click', () => {
   render();
 });
 
+function updateManualUI(){
+  const button=$('#add-area');button.classList.toggle('active',state.manualMode);$('#manual-tools').classList.toggle('hidden',!state.manualMode);
+  button.innerHTML=state.manualMode
+    ? '<svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg><span><b>Modo manual activo</b><small>Dibuja sobre el DNI. Puedes crear, deshacer o eliminar zonas.</small></span><i>Salir</i>'
+    : '<svg viewBox="0 0 20 20"><path d="M4 15.5 7.2 15l7.9-7.9-2.3-2.3-7.9 7.9L4 15.5Z"/><path d="m11.6 6 2.3 2.3M4 15.5h3.2"/></svg><span><b>Censurar manualmente</b><small>Pinta con el dedo o arrastra con el ratón directamente sobre el DNI.</small></span><i>Activar</i>';
+  $$('[data-manual-tool]').forEach(tool=>tool.classList.toggle('active',tool.dataset.manualTool===state.manualTool));
+  $('#manual-brush-size-row').classList.toggle('hidden',state.manualTool!=='brush');
+}
+
 $('#add-area').addEventListener('click', () => {
   state.manualMode = !state.manualMode;
   state.adjustMode = false;
   state.focusedField = null;
   $('#adjust-fields').classList.remove('active');
-  $('#add-area').classList.toggle('active', state.manualMode);
-  $('#add-area').innerHTML = state.manualMode
-    ? '<svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg><span><b>Salir del modo manual</b><small>Ahora arrastra sobre el documento para crear tantas censuras como necesites.</small></span>'
-    : '<svg viewBox="0 0 20 20"><path d="M4 15.5 7.2 15l7.9-7.9-2.3-2.3-7.9 7.9L4 15.5Z"/><path d="m11.6 6 2.3 2.3M4 15.5h3.2"/></svg><span><b>Activar modo manual</b><small>Pinta con el dedo o arrastra con el ratón sobre cada zona que quieras censurar.</small></span>';
-  canvas.style.cursor = state.manualMode ? 'crosshair' : 'default';
+  updateManualUI();canvas.style.cursor = state.manualMode ? 'crosshair' : 'default';
   canvas.classList.toggle('editing-zones',state.manualMode);
-  $('#canvas-hint-text').textContent = state.manualMode ? 'Arrastra sobre la imagen para crear una zona de censura.' : 'Activa o desactiva los campos y comprueba el resultado en tiempo real.';
+  $('#canvas-hint-text').textContent = state.manualMode ? 'Dibuja sobre el DNI. Rectángulo crea cajas; Pincel permite pintar libremente.' : 'Activa o desactiva los campos y comprueba el resultado en tiempo real.';
+  if(state.manualMode)$('#canvas-stage').scrollIntoView({behavior:'smooth',block:'center'});
 });
+
+$$('[data-manual-tool]').forEach(button=>button.addEventListener('click',()=>{state.manualTool=button.dataset.manualTool;updateManualUI();canvas.style.cursor=state.manualTool==='brush'?'cell':'crosshair';}));
+$('#manual-brush-size').addEventListener('input',event=>{const value=+event.target.value;state.manualBrushSize=.012+value*.006;$('#manual-brush-label').textContent=value<=3?'Fino':value<=7?'Medio':'Grueso';});
+$('#manual-undo').addEventListener('click',()=>{const manual=[...state.fields].reverse().find(field=>field.manual);if(!manual)return toast('No hay zonas manuales que deshacer.');state.fields=state.fields.filter(field=>field.id!==manual.id);renderFieldList();render();toast('Última zona eliminada.');});
+$('#manual-clear').addEventListener('click',()=>{if(!state.fields.some(field=>field.manual))return toast('No hay zonas manuales.');state.fields=state.fields.filter(field=>!field.manual);renderFieldList();render();toast('Zonas manuales eliminadas.');});
 
 let dragStart = null;
 let fieldDrag = null;
+let manualDraft = null;
 canvas.addEventListener('pointerdown', e => {
   if (state.adjustMode) {
     const p = canvasPoint(e);
@@ -1003,35 +1049,38 @@ canvas.addEventListener('pointerdown', e => {
     return;
   }
   if (!state.manualMode) return;
-  const p = canvasPoint(e); dragStart = p; canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();const p=canvasPoint(e);dragStart=p;manualDraft=state.manualTool==='brush'?{tool:'brush',points:[p],size:state.manualBrushSize}:{tool:'rect',start:p,end:p};canvas.setPointerCapture(e.pointerId);render();
 });
 canvas.addEventListener('pointermove', e => {
-  if (!fieldDrag) return;
-  const p=canvasPoint(e),dx=(p.x-fieldDrag.start.x)/canvas.width,dy=(p.y-fieldDrag.start.y)/canvas.height;
-  const [x,y,w,h]=fieldDrag.original;
-  if(fieldDrag.mode==='move'){
-    fieldDrag.field.box[0]=Math.max(0,Math.min(1-w,x+dx));
-    fieldDrag.field.box[1]=Math.max(0,Math.min(1-h,y+dy));
-  }else{
-    fieldDrag.field.box[2]=Math.max(.025,Math.min(1-x,w+dx));
-    fieldDrag.field.box[3]=Math.max(.02,Math.min(1-y,h+dy));
+  const p=canvasPoint(e);
+  if(fieldDrag){
+    const dx=(p.x-fieldDrag.start.x)/canvas.width,dy=(p.y-fieldDrag.start.y)/canvas.height,[x,y,w,h]=fieldDrag.original;
+    if(fieldDrag.mode==='move'){
+      fieldDrag.field.box[0]=Math.max(0,Math.min(1-w,x+dx));
+      fieldDrag.field.box[1]=Math.max(0,Math.min(1-h,y+dy));
+    }else{
+      fieldDrag.field.box[2]=Math.max(.025,Math.min(1-x,w+dx));
+      fieldDrag.field.box[3]=Math.max(.02,Math.min(1-y,h+dy));
+    }
+    render();return;
   }
+  if(!manualDraft)return;e.preventDefault();
+  if(manualDraft.tool==='rect')manualDraft.end=p;else{const last=manualDraft.points.at(-1);if(Math.hypot(p.x-last.x,p.y-last.y)>Math.max(2,canvas.width*.003))manualDraft.points.push(p);}
   render();
 });
 canvas.addEventListener('pointerup', e => {
   if(fieldDrag){fieldDrag=null;renderFieldList();render();toast('Posición actualizada.');return;}
-  if (!state.manualMode || !dragStart) return;
-  const end = canvasPoint(e);
-  const x = Math.min(dragStart.x, end.x), y = Math.min(dragStart.y, end.y);
-  const w = Math.abs(end.x-dragStart.x), h = Math.abs(end.y-dragStart.y);
-  dragStart = null;
-  if (w > 8 && h > 8) {
-    const count = state.fields.filter(f => f.manual).length + 1;
-    state.fields.push({ id: `manual-${Date.now()}`, label: `Zona manual ${count}`, hint: 'Área añadida por ti', box: [x/canvas.width,y/canvas.height,w/canvas.width,h/canvas.height], selected: true, manual: true });
-    renderFieldList(); render(); toast('Zona manual añadida.');
+  if (!state.manualMode || !manualDraft) return;
+  const end=canvasPoint(e),count=state.fields.filter(field=>field.manual).length+1,id=`manual-${Date.now()}`;
+  if(manualDraft.tool==='rect'){
+    manualDraft.end=end;const x=Math.min(manualDraft.start.x,end.x),y=Math.min(manualDraft.start.y,end.y),w=Math.abs(end.x-manualDraft.start.x),h=Math.abs(end.y-manualDraft.start.y);
+    if(w>8&&h>8)state.fields.push({id,label:`Zona manual ${count}`,hint:'Rectángulo manual',box:[x/canvas.width,y/canvas.height,w/canvas.width,h/canvas.height],selected:true,manual:true});
+  }else{
+    manualDraft.points.push(end);if(manualDraft.points.length>=2)state.fields.push({id,label:`Trazo manual ${count}`,hint:'Trazo pintado con el pincel',path:manualDraft.points.map(point=>[point.x/canvas.width,point.y/canvas.height]),brushSize:manualDraft.size,selected:true,manual:true});
   }
+  dragStart=null;manualDraft=null;renderFieldList();render();toast('Zona manual añadida.');
 });
-canvas.addEventListener('pointercancel',()=>{fieldDrag=null;dragStart=null;});
+canvas.addEventListener('pointercancel',()=>{fieldDrag=null;dragStart=null;manualDraft=null;render();});
 function canvasPoint(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX-r.left)*canvas.width/r.width, y:(e.clientY-r.top)*canvas.height/r.height }; }
 
 $$('#redaction-style button').forEach(btn => btn.addEventListener('click', () => {
@@ -1055,8 +1104,9 @@ function render() {
   // Paso 1: documento original. Paso 2: censuras. Paso 3 y 4: resultado completo.
   if (state.step >= 2) {
     if (state.adjustMode && state.step === 2) state.fields.filter(f => f.selected&&f.box).forEach(drawAdjustmentGuide);
-    else state.fields.filter(f => f.selected&&f.box).forEach(field=>drawRedaction(field));
+    else state.fields.filter(f => f.selected&&(f.box||f.path?.length)).forEach(field=>drawRedaction(field));
   }
+  if(state.step===2&&manualDraft)drawManualDraft();
   if (state.step >= 3 && state.watermark.enabled && state.watermark.text.trim()) drawWatermark();
   state.rendering = false;
 }
@@ -1065,7 +1115,7 @@ function createDocumentCanvas(documentState,targetWidth){
   const surface=document.createElement('canvas'),scale=targetWidth/documentState.image.naturalWidth;
   surface.width=Math.round(targetWidth);surface.height=Math.round(documentState.image.naturalHeight*scale);
   const surfaceCtx=surface.getContext('2d');surfaceCtx.drawImage(documentState.image,0,0,surface.width,surface.height);
-  documentState.fields.filter(field=>field.selected&&field.box).forEach(field=>drawRedaction(field,surface,surfaceCtx));
+  documentState.fields.filter(field=>field.selected&&(field.box||field.path?.length)).forEach(field=>drawRedaction(field,surface,surfaceCtx));
   if(state.watermark.enabled&&state.watermark.text.trim())drawWatermark(surface,surfaceCtx);
   return surface;
 }
@@ -1083,6 +1133,7 @@ function composeDocuments(target){
 }
 
 function drawRedaction(field,targetCanvas=canvas,targetCtx=ctx) {
+  if(field.path?.length){targetCtx.save();targetCtx.strokeStyle='#111716';targetCtx.lineWidth=Math.max(8,(field.brushSize||.035)*targetCanvas.width);targetCtx.lineCap='round';targetCtx.lineJoin='round';targetCtx.beginPath();field.path.forEach((point,index)=>{const x=point[0]*targetCanvas.width,y=point[1]*targetCanvas.height;if(index)targetCtx.lineTo(x,y);else targetCtx.moveTo(x,y);});targetCtx.stroke();targetCtx.restore();return;}
   const [rx,ry,rw,rh] = field.box;
   const x=rx*targetCanvas.width,y=ry*targetCanvas.height,w=rw*targetCanvas.width,h=rh*targetCanvas.height;
   targetCtx.save();
@@ -1101,6 +1152,13 @@ function drawRedaction(field,targetCanvas=canvas,targetCtx=ctx) {
     }
   }
   targetCtx.strokeStyle='rgba(255,255,255,.7)';targetCtx.lineWidth=Math.max(1,targetCanvas.width/900);targetCtx.strokeRect(x+.5,y+.5,w-1,h-1);targetCtx.restore();
+}
+
+function drawManualDraft(){
+  ctx.save();ctx.fillStyle='rgba(14,93,80,.38)';ctx.strokeStyle='rgba(14,93,80,.85)';ctx.lineCap='round';ctx.lineJoin='round';
+  if(manualDraft.tool==='rect'){const x=Math.min(manualDraft.start.x,manualDraft.end.x),y=Math.min(manualDraft.start.y,manualDraft.end.y),w=Math.abs(manualDraft.end.x-manualDraft.start.x),h=Math.abs(manualDraft.end.y-manualDraft.start.y);ctx.fillRect(x,y,w,h);ctx.lineWidth=Math.max(2,canvas.width*.003);ctx.strokeRect(x,y,w,h);}
+  else{ctx.lineWidth=Math.max(8,manualDraft.size*canvas.width);ctx.beginPath();manualDraft.points.forEach((point,index)=>{if(index)ctx.lineTo(point.x,point.y);else ctx.moveTo(point.x,point.y);});ctx.stroke();}
+  ctx.restore();
 }
 
 function drawAdjustmentGuide(field) {
@@ -1165,7 +1223,7 @@ function goToStep(step) {
 }
 
 function updateSummary() {
-  persistActiveDocument();const documents=state.documents.filter(documentState=>documentState?.image),count=documents.reduce((sum,documentState)=>sum+documentState.fields.filter(field=>field.selected&&field.box).length,0);
+  persistActiveDocument();const documents=state.documents.filter(documentState=>documentState?.image),count=documents.reduce((sum,documentState)=>sum+documentState.fields.filter(field=>field.selected&&(field.box||field.path?.length)).length,0);
   $('#result-summary').innerHTML=`<div><span>Documentos</span><b>${documents.length} ${documents.length===1?'imagen':'imágenes'} · composición vertical</b></div><div><span>Datos censurados</span><b>${count} ${count===1?'campo':'campos'}</b></div><div><span>Marca de agua</span><b>${state.watermark.enabled?'Aplicada':'Sin marca'}</b></div><div><span>Procesamiento</span><b>Local y privado</b></div>`;
 }
 
