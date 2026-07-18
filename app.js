@@ -1,3 +1,5 @@
+import { editDistance, normalizeText, parseDateCandidate, parseDniCandidate, parseSupportCandidate, patternMatch } from './ocr-helpers.js';
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -47,10 +49,50 @@ const state = {
   watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, size: 1, color: '#b42318' },
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
   cropApplied: false, rotationApplied: false, focusedField: null, rendering: false,
-  cameraStream: null, cameraFacing: 'environment', cameraFramed: false,
+  cameraStream: null, cameraFacing: 'environment', cameraFramed: false, cameraTarget: 'full',
   documents: [], activeDocument: -1, pendingAppend: false, processingDocument: false,
   manualTool: 'rect', manualBrushSize: .035
 };
+
+const OCR_SCRIPT_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+let ocrWorkerPromise=null;
+let ocrProgressStage={label:'Reconociendo campos',start:15,span:50};
+
+function setOcrProgressStage(label,start,span){
+  ocrProgressStage={label,start,span};
+  $('#ocr-progress').style.width=`${start}%`;
+  $('#processing-text').textContent=label;
+}
+
+async function getOcrWorker(){
+  if(!ocrWorkerPromise){
+    ocrWorkerPromise=(async()=>{
+      await loadScript(OCR_SCRIPT_SRC);
+      if(!window.Tesseract?.createWorker)throw new Error('El motor OCR no está disponible');
+      return window.Tesseract.createWorker('spa',1,{
+        logger:message=>{
+          if(message.status!=='recognizing text')return;
+          const percent=Math.round((message.progress||0)*100),overall=Math.min(98,ocrProgressStage.start+message.progress*ocrProgressStage.span);
+          $('#ocr-progress').style.width=`${overall}%`;
+          $('#processing-text').textContent=`${ocrProgressStage.label} ${percent}%`;
+        }
+      });
+    })().catch(error=>{ocrWorkerPromise=null;throw error;});
+  }
+  return ocrWorkerPromise;
+}
+
+async function disposeOcrWorker(){
+  const pending=ocrWorkerPromise;ocrWorkerPromise=null;
+  if(!pending)return;
+  try{const worker=await pending;await worker.terminate();}catch{}
+}
+
+async function recognizeOcr(worker,prepared,{psm='11',label='Reconociendo campos…',start=15,span=50}={}){
+  setOcrProgressStage(label,start,span);
+  await worker.setParameters({tessedit_pageseg_mode:psm,preserve_interword_spaces:'1'});
+  return worker.recognize(prepared.canvas);
+}
 
 const DOCUMENT_STATE_KEYS=['side','image','originalImage','fileName','fields','ocrText','ocrWords','ocrLayout','photoField','cropApplied','rotationApplied','cameraFramed'];
 
@@ -75,7 +117,7 @@ const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const processing = $('#processing-overlay');
 
 $('#choose-file').addEventListener('click', () => {state.pendingAppend=false;$('#file-input').click();});
-$('#take-photo').addEventListener('click',()=>{state.pendingAppend=false;openCamera();});
+$('#take-photo').addEventListener('click',()=>{state.pendingAppend=false;openCamera('full');});
 $('#file-input').addEventListener('change', async e => {await handleFiles([...e.target.files]);e.target.value='';});
 $('#camera-input').addEventListener('change', async e => {await handleFile(e.target.files[0],{append:state.pendingAppend});e.target.value='';});
 
@@ -139,11 +181,21 @@ async function handleFile(file,{preCropped=false,append=state.pendingAppend}={})
 
 const cameraDialog=$('#camera-dialog'),cameraVideo=$('#camera-video'),cameraViewport=$('#camera-viewport'),documentFrame=$('#document-frame');
 
-async function openCamera(){
-  if(!navigator.mediaDevices?.getUserMedia){$('#camera-input').click();return;}
+async function openCamera(target='full'){
+  state.cameraTarget=target;
+  $('#camera-title').textContent=target==='lite'?'Encaja el documento en el marco':'Encaja el DNI en el marco';
+  $('#camera-instruction').textContent=target==='lite'?'Coloca el documento sobre una superficie lisa y ajusta sus bordes al recuadro.':'Apoya el DNI sobre una superficie lisa, evita reflejos y llena el recuadro.';
+  documentFrame.dataset.label=target==='lite'?'DOCUMENTO':'DNI';
+  if(!navigator.mediaDevices?.getUserMedia){
+    if(target==='lite')document.dispatchEvent(new CustomEvent('lite:camera-fallback'));
+    else $('#camera-input').click();
+    return;
+  }
   if(!cameraDialog.open)cameraDialog.showModal();
   await startCamera();
 }
+
+document.addEventListener('lite:open-camera',()=>openCamera('lite'));
 
 function stopCamera(){
   state.cameraStream?.getTracks().forEach(track=>track.stop());
@@ -177,24 +229,28 @@ function framedVideoCrop(){
 
 async function captureFramedDocument(){
   const crop=framedVideoCrop();if(!crop)return toast('Espera a que la cámara esté preparada.');
-  const append=state.pendingAppend;
+  const append=state.pendingAppend,target=state.cameraTarget;
   $('#capture-camera').disabled=true;
   const captured=document.createElement('canvas');captured.width=Math.round(crop.w);captured.height=Math.round(crop.h);
   captured.getContext('2d').drawImage(cameraVideo,crop.x,crop.y,crop.w,crop.h,0,0,captured.width,captured.height);
   const blob=await new Promise(resolve=>captured.toBlob(resolve,'image/jpeg',.95));
   if(!blob){$('#capture-camera').disabled=false;return toast('No se ha podido capturar la imagen.');}
   stopCamera();cameraDialog.close();
-  await handleFile(new File([blob],`dni-camara-${Date.now()}.jpg`,{type:'image/jpeg'}),{preCropped:true,append});
+  const capturedFile=new File([blob],`${target==='lite'?'documento':'dni'}-camara-${Date.now()}.jpg`,{type:'image/jpeg'});
+  state.cameraTarget='full';
+  if(target==='lite')document.dispatchEvent(new CustomEvent('lite:camera-captured',{detail:{file:capturedFile}}));
+  else await handleFile(capturedFile,{preCropped:true,append});
 }
 
 $('#capture-camera').addEventListener('click',captureFramedDocument);
 $('#switch-camera').addEventListener('click',async()=>{state.cameraFacing=state.cameraFacing==='environment'?'user':'environment';await startCamera();});
-function closeCamera(){stopCamera();state.pendingAppend=false;if(cameraDialog.open)cameraDialog.close();}
+function closeCamera(){stopCamera();state.pendingAppend=false;state.cameraTarget='full';if(cameraDialog.open)cameraDialog.close();}
 $('#close-camera').addEventListener('click',closeCamera);$('#cancel-camera').addEventListener('click',closeCamera);
-$('#camera-fallback').addEventListener('click',()=>{const append=state.pendingAppend;closeCamera();state.pendingAppend=append;$('#camera-input').click();});
+$('#camera-fallback').addEventListener('click',()=>{const append=state.pendingAppend,target=state.cameraTarget;closeCamera();if(target==='lite')document.dispatchEvent(new CustomEvent('lite:camera-fallback'));else{state.pendingAppend=append;$('#camera-input').click();}});
 cameraDialog.addEventListener('cancel',event=>{event.preventDefault();closeCamera();});
 cameraDialog.addEventListener('close',stopCamera);
 window.addEventListener('pagehide',stopCamera);
+window.addEventListener('pagehide',()=>{void disposeOcrWorker();});
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -226,9 +282,9 @@ function selectDocument(index){
 }
 
 $('#add-document-file').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;$('#file-input').click();});
-$('#add-document-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera();});
+$('#add-document-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera('full');});
 $('#result-add-file').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;$('#file-input').click();});
-$('#result-add-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera();});
+$('#result-add-camera').addEventListener('click',()=>{if(state.processingDocument)return;state.pendingAppend=true;openCamera('full');});
 
 async function canvasToImage(source) {
   return new Promise((resolve, reject) => {
@@ -267,11 +323,38 @@ function ocrCoverage(words,text=''){
   return ids.size;
 }
 
+function sideAnchorCoverage(layout,side){
+  const ids=new Set();
+  FIELD_SCHEMAS[side].forEach(schema=>{if(findAnchors(schema,layout).length)ids.add(schema.id);});
+  if(side==='back'&&findMrzLines(layout).length>=2)ids.add('mrz');
+  return ids.size;
+}
+
+function ocrPassMetrics(words,text=''){
+  const usable=words.filter(word=>normalizeText(word.text)&&(word.confidence||0)>10),layout=makeOcrLayout(words),normalized=normalizeText(text);
+  const backAnchors=sideAnchorCoverage(layout,'back'),frontAnchors=sideAnchorCoverage(layout,'front'),mrzLines=findMrzLines(layout).length;
+  const backLikely=mrzLines>=2||backAnchors>=2||normalized.includes('DOMICILIO')||normalized.includes('HIJO DE');
+  return {
+    layout,backLikely,mrzLines,backAnchors,frontAnchors,
+    coverage:ocrCoverage(words,text),
+    medianConfidence:median(usable.map(word=>word.confidence||0)),
+    usefulWords:usable.length
+  };
+}
+
+function needsOcrVerification(metrics){
+  const sideCoverage=metrics.backLikely?metrics.backAnchors+(metrics.mrzLines>=2?1:0):metrics.frontAnchors;
+  const target=metrics.backLikely?4:6;
+  return sideCoverage<target||metrics.medianConfidence<43||metrics.usefulWords<(metrics.backLikely?12:10);
+}
+
 async function correctOrientationWithOcr(worker,image,initialResult,initialPrepared){
   let best={image,result:initialResult,prepared:initialPrepared,degrees:0,semantic:orientationScore(initialResult.data.text),quality:orientationQuality(initialResult)};
   if(best.semantic>=7)return best;
-  for(const degrees of [180,90,270]){
-    const candidateImage=await rotateImage(image,degrees),candidatePrepared=prepareOcrImage(candidateImage,undefined,'normal',1300),candidateResult=await worker.recognize(candidatePrepared.canvas),semantic=orientationScore(candidateResult.data.text),quality=orientationQuality(candidateResult)+(candidateImage.naturalWidth>candidateImage.naturalHeight?6:0);
+  const rotations=[180,90,270];
+  for(let index=0;index<rotations.length;index++){
+    const degrees=rotations[index];setOcrProgressStage('Comprobando orientación…',54+index*4,4);
+    const candidateImage=await rotateImage(image,degrees),candidatePrepared=prepareOcrImage(candidateImage,undefined,'strong',1050),candidateResult=await worker.recognize(candidatePrepared.canvas),semantic=orientationScore(candidateResult.data.text),quality=orientationQuality(candidateResult)+(candidateImage.naturalWidth>candidateImage.naturalHeight?6:0);
     if(semantic>best.semantic||quality>best.quality+9)best={image:candidateImage,result:candidateResult,prepared:candidatePrepared,degrees,semantic,quality};
     if(best.semantic>=7)break;
   }
@@ -318,20 +401,11 @@ async function analyseLocally(file) {
   let detectedSide = 'front';
   try {
     $('#processing-text').textContent = 'Cargando el lector de texto local…';
-    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-    if (!window.Tesseract?.createWorker) throw new Error('El motor OCR no está disponible');
-    const worker = await window.Tesseract.createWorker('spa', 1, {
-      logger: message => {
-        if (message.status === 'recognizing text') {
-          const percent = Math.round((message.progress || 0) * 100);
-          $('#ocr-progress').style.width = `${Math.max(15, percent)}%`;
-          $('#processing-text').textContent = `Reconociendo campos… ${percent}%`;
-        }
-      }
-    });
-    await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
-    const prepared = prepareOcrImage(state.image,undefined,'normal',1400);
-    let result = await worker.recognize(prepared.canvas);
+    const worker=await getOcrWorker();
+    // Una primera lectura equilibrada suele bastar. Las pasadas más costosas se
+    // reservan para documentos con pocos campos o confianza baja.
+    const prepared=prepareOcrImage(state.image,undefined,'strong',1650);
+    let result=await recognizeOcr(worker,prepared,{psm:'11',label:'Localizando texto…',start:12,span:42});
     const orientation=await correctOrientationWithOcr(worker,state.image,result,prepared);
     if(orientation.degrees){state.image=orientation.image;state.rotationApplied=true;fitCanvas(state.image);render();}
     result=orientation.result;
@@ -343,38 +417,31 @@ async function analyseLocally(file) {
       mappedWords=mappedWords.filter(word=>word.bbox.x1>crop.bounds.x&&word.bbox.x0<crop.bounds.x+crop.bounds.w&&word.bbox.y1>crop.bounds.y&&word.bbox.y0<crop.bounds.y+crop.bounds.h).map(word=>({...word,bbox:{x0:(word.bbox.x0-crop.bounds.x)*crop.scale,y0:(word.bbox.y0-crop.bounds.y)*crop.scale,x1:(word.bbox.x1-crop.bounds.x)*crop.scale,y1:(word.bbox.y1-crop.bounds.y)*crop.scale}}));
       state.image=crop.image;state.cropApplied=true;fitCanvas(crop.image);render();
     }
-    // Segunda lectura con segmentación de bloque: recupera etiquetas pequeñas
-    // que la lectura dispersa suele omitir en fotos con hologramas o reflejos.
-    $('#processing-text').textContent = 'Comprobando todos los campos…';
-    await worker.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1' });
-    const verification=prepareOcrImage(state.image,undefined,'strong');
-    const verificationResult=await worker.recognize(verification.canvas);
-    mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verificationResult.data.words||[],verification));
-    combinedText+=`\n${verificationResult.data.text||''}`;
-    let provisionalLayout=makeOcrLayout(mappedWords),provisionalText=normalizeText(combinedText);
-    let backLikely=provisionalText.includes('DOMICILIO')||provisionalText.includes('HIJO DE')||findMrzLines(provisionalLayout).length>=2;
-    if(ocrCoverage(mappedWords,combinedText)<8&&!backLikely){
-      $('#processing-text').textContent = 'Leyendo etiquetas sobre la trama de seguridad…';
-      await worker.setParameters({ tessedit_pageseg_mode:'11', preserve_interword_spaces:'1' });
-      const adaptive=prepareOcrImage(state.image,undefined,'adaptive',1800);
-      const adaptiveResult=await worker.recognize(adaptive.canvas);
-      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(adaptiveResult.data.words||[],adaptive));
-      combinedText+=`\n${adaptiveResult.data.text||''}`;
-      provisionalLayout=makeOcrLayout(mappedWords);provisionalText=normalizeText(combinedText);
-      backLikely=provisionalText.includes('DOMICILIO')||provisionalText.includes('HIJO DE')||findMrzLines(provisionalLayout).length>=2;
+    let metrics=ocrPassMetrics(mappedWords,combinedText);
+    if(needsOcrVerification(metrics)){
+      const difficult=metrics.coverage<4||metrics.medianConfidence<38,variant=difficult?'adaptive':'strong';
+      const verification=prepareOcrImage(state.image,undefined,variant,difficult?1800:1850);
+      const verificationResult=await recognizeOcr(worker,verification,{psm:difficult?'11':'6',label:difficult?'Separando texto del fondo…':'Completando campos…',start:66,span:18});
+      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(verificationResult.data.words||[],verification));
+      combinedText+=`\n${verificationResult.data.text||''}`;
+      metrics=ocrPassMetrics(mappedWords,combinedText);
     }
-    if(backLikely){
+    if(metrics.backLikely){
       // En los DNI recientes el reverso concentra texto pequeño en la mitad
-      // superior y el número de equipo está impreso en vertical.
-      $('#processing-text').textContent = 'Comprobando el reverso y el código MRZ…';
-      await worker.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1' });
-      const backTop=prepareOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth,h:state.image.naturalHeight*.68},'strong',1900);
-      const backTopResult=await worker.recognize(backTop.canvas);
-      mappedWords=mergeOcrWords(mappedWords,mapOcrWords(backTopResult.data.words||[],backTop));combinedText+=`\n${backTopResult.data.text||''}`;
-      const vertical=prepareRotatedOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth*.32,h:state.image.naturalHeight*.78},1200);
-      const verticalResult=await worker.recognize(vertical.canvas);
-      const verticalWords=mapOcrWords(verticalResult.data.words||[],vertical).filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return value.includes('EQUIPO')||(value.length>=8&&value.length<=13&&/[A-Z]/.test(value)&&/\d/.test(value));});
-      mappedWords=mergeOcrWords(mappedWords,verticalWords);combinedText+=`\n${verticalResult.data.text||''}`;
+      // superior y el número de equipo está impreso en vertical. Cada región
+      // solo se relee cuando la primera pasada no la resolvió.
+      if(metrics.backAnchors<4){
+        const backTop=prepareOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth,h:state.image.naturalHeight*.68},'strong',1750);
+        const backTopResult=await recognizeOcr(worker,backTop,{psm:'6',label:'Completando datos del reverso…',start:84,span:8});
+        mappedWords=mergeOcrWords(mappedWords,mapOcrWords(backTopResult.data.words||[],backTop));combinedText+=`\n${backTopResult.data.text||''}`;
+        metrics=ocrPassMetrics(mappedWords,combinedText);
+      }
+      if(!findTeamNumber(metrics.layout)){
+        const vertical=prepareRotatedOcrImage(state.image,{x:0,y:0,w:state.image.naturalWidth*.32,h:state.image.naturalHeight*.78},1050);
+        const verticalResult=await recognizeOcr(worker,vertical,{psm:'6',label:'Leyendo el equipo de expedición…',start:92,span:5});
+        const verticalWords=mapOcrWords(verticalResult.data.words||[],vertical).filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return value.includes('EQUIPO')||(value.length>=8&&value.length<=13&&/[A-Z]/.test(value)&&/\d/.test(value));});
+        mappedWords=mergeOcrWords(mappedWords,verticalWords);combinedText+=`\n${verticalResult.data.text||''}`;
+      }
     }
     const firstLayout=makeOcrLayout(mappedWords);
     const firstMrzWords=mappedWords.filter(word=>isMrzText(normalizeText(word.text)));
@@ -384,13 +451,14 @@ async function analyseLocally(file) {
       const mrzStart=Math.min(...firstMrzWords.map(word=>word.bbox.x0));
       if(mrzStart>state.image.naturalWidth*.35){
         const frontCrop={x:0,y:0,w:Math.max(1,mrzStart-firstLayout.medianHeight),h:state.image.naturalHeight};
-        const frontPrepared=prepareOcrImage(state.image,frontCrop);
-        const frontResult=await worker.recognize(frontPrepared.canvas);
+        const frontPrepared=prepareOcrImage(state.image,frontCrop,'strong',1650);
+        const frontResult=await recognizeOcr(worker,frontPrepared,{psm:'11',label:'Separando las dos caras…',start:94,span:4});
         mappedWords=mergeOcrWords(mappedWords,mapOcrWords(frontResult.data.words||[],frontPrepared));
         combinedText+=`\n${frontResult.data.text||''}`;
       }
     }
-    await worker.terminate();
+    $('#ocr-progress').style.width='99%';
+    $('#processing-text').textContent='Organizando campos…';
     state.ocrText=combinedText;
     state.ocrWords=mappedWords;
     state.ocrLayout = makeOcrLayout(state.ocrWords);
@@ -401,6 +469,7 @@ async function analyseLocally(file) {
     updateOcrStatus();
   } catch (error) {
     console.warn('OCR no disponible', error);
+    await disposeOcrWorker();
     state.ocrLayout=makeOcrLayout([]);
     state.ocrText='';
     state.fields=buildFieldsFromOcr(state.side);
@@ -534,8 +603,8 @@ function detectSide(text, layout) {
   const value=normalizeText(text);
   const mrz=findMrzLines(layout).length>=2;
   if(mrz&&state.image.naturalWidth/state.image.naturalHeight>2.2)return 'front';
-  const backScore=['DOMICILIO','LUGAR DOMICILIO','EQUIPO','HIJO DE'].filter(x=>value.includes(x)).length+(mrz?3:0);
-  const frontScore=['APELLIDOS','NOMBRE','NACIONALIDAD','NACIMIENTO','VALIDEZ'].filter(x=>value.includes(x)).length;
+  const backScore=sideAnchorCoverage(layout,'back')*2+['DOMICILIO','LUGAR DOMICILIO','EQUIPO','HIJO DE'].filter(x=>value.includes(x)).length+(mrz?5:0);
+  const frontScore=sideAnchorCoverage(layout,'front')*2+['APELLIDOS','NOMBRE','NACIONALIDAD','NACIMIENTO','VALIDEZ'].filter(x=>value.includes(x)).length;
   return backScore > frontScore ? 'back' : frontScore ? 'front' : null;
 }
 
@@ -552,10 +621,6 @@ function setSide(side, rerender = true) {
 function updateOcrStatus(){
   const detected=state.fields.filter(field=>field.box).length,total=state.fields.filter(field=>!field.manual).length;
   $('#ocr-status').textContent=`${detected} de ${total} campos localizados${state.cropApplied?' · DNI recortado':''}${state.rotationApplied?' · orientación corregida':''}`;
-}
-
-function normalizeText(value='') {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9<]+/g,' ').trim();
 }
 
 function median(values) {
@@ -582,30 +647,6 @@ function makeOcrLayout(words) {
   });
   lines.sort((a,b)=>a.bbox.y0-b.bbox.y0);
   return {lines,medianHeight};
-}
-
-function editDistance(a,b) {
-  if(Math.abs(a.length-b.length)>2)return 9;let previous=[...Array(b.length+1).keys()];
-  for(let i=1;i<=a.length;i++){const current=[i];for(let j=1;j<=b.length;j++)current[j]=Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=current;}return previous[b.length];
-}
-
-function tokenMatches(value,target) {
-  if(value.includes('<'))return false;
-  return value===target||(value.length<=target.length+3&&value.includes(target))||(['HIJO','HIJA'].includes(target)&&editDistance(value,target)<=2)||(target.length>=8&&editDistance(value,target)<=2)||(target.length>=5&&editDistance(value,target)<=1);
-}
-
-function patternMatch(line, pattern) {
-  const entries=line.words.flatMap(word=>normalizeText(word.text).split(' ').filter(Boolean).map(value=>({value,word})));
-  const tokens=entries.map(entry=>entry.value);
-  for(let start=0;start<tokens.length;start++){
-    let cursor=start;const matched=[];
-    for(const target of pattern){
-      let found=-1;for(let i=cursor;i<Math.min(tokens.length,cursor+3);i++){if(tokenMatches(tokens[i],target)){found=i;break;}}
-      if(found<0){matched.length=0;break;}matched.push(entries[found].word);cursor=found+1;
-    }
-    if(matched.length===pattern.length)return matched;
-  }
-  return null;
 }
 
 function findRepeatedSurname(layout) {
@@ -682,24 +723,33 @@ function groupWordsByVisualLine(words,medianHeight){
 }
 
 function findDniNumber(layout) {
-  const candidates=[],iw=state.image.naturalWidth,ih=state.image.naturalHeight,letterMap='TRWAGMYFPDXBNJZSQVHLCKE';
+  const candidates=[],iw=state.image.naturalWidth,ih=state.image.naturalHeight;
   for(const line of layout.lines){
     for(let start=0;start<line.words.length;start++)for(let end=start;end<Math.min(line.words.length,start+4);end++){
-      const words=line.words.slice(start,end+1),raw=normalizeText(words.map(word=>word.text).join('')).replace(/ /g,''),box=unionBox(words),cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2;let value=raw,score=words.reduce((s,w)=>s+(w.confidence||0),0)/Math.max(1,words.length)/100;
-      if(/^\d{8}[A-Z]$/.test(raw)){const expected=letterMap[Number(raw.slice(0,8))%23];score+=raw[8]===expected?14:1;}
-      else if(/^\d{8}$/.test(raw)){value=raw+letterMap[Number(raw)%23];score+=cy<ih*.38&&cx>iw*.28?6:-4;}
-      else if(/^\d{9}$/.test(raw)&&cy<ih*.38&&cx>iw*.28){value=raw.slice(0,8)+letterMap[Number(raw.slice(0,8))%23];score+=1;}
-      else continue;
-      score+=(cy<ih*.38?4:0)+(cx>iw*.28?2:0)+(words.length===1?2:0);candidates.push({words,value,score});
+      const words=line.words.slice(start,end+1),raw=words.map(word=>word.text).join(''),parsed=parseDniCandidate(raw);
+      if(!parsed||isMrzText(normalizeText(raw).replace(/ /g,'')))continue;
+      const box=unionBox(words),cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2,hasLetter=parsed.suppliedLetter!==null;
+      if(!hasLetter&&!(cy<ih*.45&&cx>iw*.22))continue;
+      let score=words.reduce((s,w)=>s+(w.confidence||0),0)/Math.max(1,words.length)/100;
+      score+=(parsed.checksumValid?14:hasLetter?-1:5)-parsed.corrections*1.4;
+      score+=(cy<ih*.42?4:0)+(cx>iw*.25?2:0)+(words.length===1?2:0);
+      candidates.push({words,value:parsed.value,score});
     }
   }
   return candidates.sort((a,b)=>b.score-a.score)[0]||null;
 }
 
 function findSupportNumber(layout) {
-  const candidates=layout.lines.flatMap(line=>line.words).filter(word=>{const value=normalizeText(word.text).replace(/ /g,'');return /^[A-Z]{2,4}\d{5,9}$/.test(value)&&!isMrzText(value);});
-  const word=candidates.sort((a,b)=>(b.confidence||0)-(a.confidence||0))[0];
-  return word?{word,value:normalizeText(word.text).replace(/ /g,'')}:null;
+  const candidates=[];
+  layout.lines.forEach(line=>{
+    for(let start=0;start<line.words.length;start++)for(let end=start;end<Math.min(line.words.length,start+3);end++){
+      const words=line.words.slice(start,end+1),raw=words.map(word=>word.text).join(''),compact=normalizeText(raw).replace(/ /g,''),parsed=parseSupportCandidate(raw);
+      if(!parsed||isMrzText(compact))continue;
+      const confidence=words.reduce((sum,word)=>sum+(word.confidence||0),0)/words.length;
+      candidates.push({words,value:parsed.value,score:confidence-parsed.score*9+(words.length===1?4:0)});
+    }
+  });
+  return candidates.sort((a,b)=>b.score-a.score)[0]||null;
 }
 
 function findCanNumber(layout, found) {
@@ -743,8 +793,13 @@ function findSimpleFrontFields(layout){
   const sex=words.filter(word=>/^[MF]$/.test(normalizeText(word.text))&&!isMrzText(normalizeText(word.text))).sort((a,b)=>nationality?Math.hypot(a.bbox.x0-nationality.bbox.x0,a.bbox.y0-nationality.bbox.y0)-Math.hypot(b.bbox.x0-nationality.bbox.x0,b.bbox.y0-nationality.bbox.y0):(b.confidence||0)-(a.confidence||0))[0];
   if(sex)derived.push({id:'sex',label:'Sexo',hint:normalizeText(sex.text),box:boxFromWords([sex],layout),selected:true,confidence:Math.round(sex.confidence||0)});
   const dates=[];
-  layout.lines.forEach(line=>{const numeric=line.words.map(word=>({word,value:normalizeText(word.text).replace(/[^0-9]/g,'')})).filter(item=>/^\d{1,4}$/.test(item.value));for(let i=0;i<numeric.length-2;i++){const group=numeric.slice(i,i+3),day=+group[0].value,month=+group[1].value,year=+group[2].value;if(day>=1&&day<=31&&month>=1&&month<=12&&year>=1900&&year<=2099)dates.push({words:group.map(item=>item.word),value:`${String(day).padStart(2,'0')} ${String(month).padStart(2,'0')} ${year}`,year});}});
-  const unique=dates.filter((date,index)=>!dates.slice(0,index).some(other=>other.value===date.value));
+  layout.lines.forEach(line=>{
+    for(let start=0;start<line.words.length;start++)for(let end=start;end<Math.min(line.words.length,start+3);end++){
+      const date=parseDateCandidate(line.words.slice(start,end+1).map(word=>word.text).join(''));
+      if(date)dates.push({...date,words:line.words.slice(start,end+1)});
+    }
+  });
+  const unique=dates.sort((a,b)=>b.words.reduce((sum,word)=>sum+(word.confidence||0),0)/b.words.length-a.words.reduce((sum,word)=>sum+(word.confidence||0),0)/a.words.length).filter((date,index,items)=>!items.slice(0,index).some(other=>other.value===date.value));
   const birth=unique.filter(date=>date.year<new Date().getFullYear()-12).sort((a,b)=>a.year-b.year)[0],expiry=unique.filter(date=>date.year>=new Date().getFullYear()-1).sort((a,b)=>b.year-a.year)[0],issue=unique.filter(date=>date!==birth&&date!==expiry).sort((a,b)=>b.year-a.year)[0];
   for(const [id,label,date,selected] of [['birth','Fecha de nacimiento',birth,true],['issue','Fecha de expedición',issue,false],['expiry','Fecha de validez',expiry,false]])if(date)derived.push({id,label,hint:date.value,box:boxFromWords(date.words,layout),selected,confidence:Math.round(date.words.reduce((s,w)=>s+(w.confidence||0),0)/date.words.length)});
   return derived;
@@ -902,7 +957,7 @@ function buildFieldsFromOcr(side) {
     if(!found.some(field=>field.id==='surname'||field.id==='surname1'||field.id==='surname2')){const repeated=findRepeatedSurname(layout);if(repeated)found.push({id:'surname',label:'Apellidos',hint:repeated.value,box:boxFromWords(repeated.words,layout),selected:true,confidence:Math.round(repeated.words.reduce((s,w)=>s+(w.confidence||0),0)/repeated.words.length)});}
     const replace=field=>{const index=found.findIndex(existing=>existing.id===field.id);if(index>=0)found[index]=field;else found.push(field);};
     const dni=findDniNumber(layout);if(dni)replace({id:'dni',label:'Número de DNI',hint:dni.value,box:boxFromWords(dni.words,layout),selected:true,confidence:Math.round(dni.words.reduce((s,w)=>s+(w.confidence||0),0)/dni.words.length)});
-    const support=findSupportNumber(layout);if(support)replace({id:'support',label:'N.º de soporte',hint:support.value,box:boxFromWords([support.word],layout),selected:true,confidence:Math.round(support.word.confidence||0)});
+    const support=findSupportNumber(layout);if(support)replace({id:'support',label:'N.º de soporte',hint:support.value,box:boxFromWords(support.words,layout),selected:true,confidence:Math.round(support.words.reduce((sum,word)=>sum+(word.confidence||0),0)/support.words.length)});
     findSimpleFrontFields(layout).forEach(replace);
     findIdentityNames(layout).forEach(field=>{if(!found.some(existing=>existing.id===field.id))found.push(field);});
     const can=findCanNumber(layout,found);if(can&&!found.some(field=>field.id==='can'))found.push({id:'can',label:'Código CAN',hint:can.value,box:boxFromWords([can.word],layout),selected:false,confidence:Math.round(can.word.confidence||0)});

@@ -28,7 +28,7 @@ $('#lite-back').addEventListener('click', () => {
 });
 
 function openFilePicker() { fileInput.click(); }
-function openCameraPicker() { cameraInput.click(); }
+function openCameraPicker() { document.dispatchEvent(new CustomEvent('lite:open-camera')); }
 
 $('#lite-add-file').addEventListener('click', openFilePicker);
 $('#lite-empty-file').addEventListener('click', openFilePicker);
@@ -44,6 +44,12 @@ cameraInput.addEventListener('change', async event => {
   await addFiles([...event.target.files]);
   event.target.value = '';
 });
+
+document.addEventListener('lite:camera-captured', async event => {
+  if (event.detail?.file) await addFiles([event.detail.file]);
+});
+
+document.addEventListener('lite:camera-fallback', () => cameraInput.click());
 
 async function addFiles(files) {
   const images = files.filter(file => file.type.startsWith('image/'));
@@ -128,13 +134,21 @@ function renderDocument(document, target, targetCtx, width, includeDraft = false
 
 function drawBlurredStrokes(image, strokes, targetCtx, width, height) {
   if (!strokes.length) return;
+  // Evita depender de CanvasRenderingContext2D.filter, que falla en algunos
+  // navegadores móviles. El mosaico se genera y exporta de forma consistente.
+  const pixelSize = Math.max(20, Math.round(Math.min(width, height) * .04));
+  const mosaic = document.createElement('canvas');
+  mosaic.width = Math.max(1, Math.ceil(width / pixelSize));
+  mosaic.height = Math.max(1, Math.ceil(height / pixelSize));
+  const mosaicCtx = mosaic.getContext('2d');
+  mosaicCtx.imageSmoothingEnabled = true;
+  mosaicCtx.drawImage(image, 0, 0, mosaic.width, mosaic.height);
   const layer = document.createElement('canvas');
   layer.width = width;
   layer.height = height;
   const layerCtx = layer.getContext('2d');
-  layerCtx.filter = `blur(${Math.max(12, Math.round(Math.min(width, height) * .025))}px)`;
-  layerCtx.drawImage(image, 0, 0, width, height);
-  layerCtx.filter = 'none';
+  layerCtx.imageSmoothingEnabled = false;
+  layerCtx.drawImage(mosaic, 0, 0, width, height);
   layerCtx.globalCompositeOperation = 'destination-in';
   layerCtx.strokeStyle = '#fff';
   layerCtx.fillStyle = '#fff';
@@ -308,4 +322,3 @@ function notify(message) {
   clearTimeout(notify.timer);
   notify.timer = setTimeout(() => toast.classList.remove('show'), 3200);
 }
-

@@ -5,7 +5,7 @@ Aplicación web para censurar uno o varios DNI españoles (3.0 o posteriores), a
 Incluye dos modos:
 
 - **Completo:** analiza el documento localmente con OCR, propone campos y permite ajustar las zonas.
-- **Lite:** abre la cámara o una imagen sin análisis, permite difuminar datos pintando con el dedo o el ratón, añadir una marca de agua opcional, combinar varios documentos y descargar una única imagen.
+- **Lite:** abre la cámara con un marco para encuadrar y recortar el documento, o permite elegir una imagen sin análisis; después permite censurar datos pintando con el dedo o el ratón, añadir una marca de agua opcional, combinar varios documentos y descargar una única imagen.
 
 ## Privacidad
 
@@ -14,11 +14,13 @@ Incluye dos modos:
 - La captura integrada usa `navigator.mediaDevices.getUserMedia`; el flujo de vídeo no sale del navegador y se detiene al capturar o cerrar el visor.
 - El marco de cámara mantiene la proporción física del DNI (1,586:1) y sus coordenadas se transforman a píxeles del vídeo para recortar exactamente la zona visible.
 - El OCR se ejecuta en el navegador mediante Tesseract.js.
+- El lector y el modelo se mantienen preparados mientras la pestaña está abierta, por lo que analizar una segunda cara o documento evita repetir la inicialización.
 - El recorte automático combina las cajas del OCR con los bordes visibles de la fotografía para eliminar el fondo sin usar una plantilla de coordenadas.
 - La orientación se corrige automáticamente para documentos girados 90°, 180° o 270°; las rotaciones adicionales solo se prueban cuando la primera lectura no es coherente.
-- Se realizan lecturas OCR complementarias y, en el reverso moderno, una lectura específica de la franja vertical de “Equipo”. La binarización adaptativa solo se usa cuando faltan campos.
+- La primera lectura usa escala y contraste equilibrados. Las lecturas de mayor coste, la binarización adaptativa y las regiones específicas del reverso solo se ejecutan cuando faltan campos o la confianza es baja.
 - Las posiciones no proceden de una plantilla: se calculan con las cajas de texto devueltas por el OCR.
-- Las etiquetas se relacionan con sus valores por proximidad, líneas de texto y contenido MRZ.
+- Las etiquetas se relacionan con sus valores por proximidad, líneas de texto y contenido MRZ; la búsqueda tolera palabras unidas y confusiones visuales habituales del OCR.
+- El número de DNI se valida con su letra de control y los formatos de número de soporte y fecha se normalizan antes de seleccionar la mejor caja.
 - En imágenes que contienen las dos caras se realiza una segunda pasada sobre cada región detectada.
 - La primera carga descarga el motor y el modelo OCR desde un CDN; la imagen nunca se envía a ese CDN.
 - La previsualización y la exportación se generan con Canvas en el propio dispositivo.
@@ -54,7 +56,7 @@ No hay proceso de compilación ni dependencias que instalar.
 ### Versión Lite
 
 1. Pulsa “Usar versión Lite” en la portada.
-2. Haz una foto o elige una imagen.
-3. Pinta con el dedo o el ratón sobre cualquier dato que quieras difuminar; puedes cambiar el grosor, deshacer o limpiar los trazos.
+2. Haz una foto encajando el documento dentro del marco de cámara, o elige una imagen.
+3. Pinta con el dedo o el ratón sobre cualquier dato que quieras emborronar; puedes cambiar el grosor, deshacer o limpiar los trazos.
 4. Activa, si quieres, una marca de agua y personaliza el texto y la intensidad.
 5. Añade más documentos y descarga el resultado. Todas las imágenes se unen verticalmente en un único JPG.

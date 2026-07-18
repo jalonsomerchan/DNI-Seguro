@@ -2,8 +2,10 @@
   "name": "dni-seguro",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Censura datos de un DNI español de forma local en el navegador",
   "scripts": {
-    "start": "python3 -m http.server 8080"
+    "start": "python3 -m http.server 8080",
+    "test": "node --test ocr-helpers.test.mjs"
   }
 }
