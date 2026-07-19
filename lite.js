@@ -145,17 +145,20 @@ function activeDocument() { return lite.documents[lite.active]; }
 function fitPreview(image) {
   const maximum = 1800;
   const scale = Math.min(1, maximum / Math.max(image.naturalWidth, image.naturalHeight));
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
 }
 
 function render() {
   if (lite.step === 4 && lite.documents.length) {
     const result = makeResultCanvas();
-    canvas.width = result.width;
-    canvas.height = result.height;
+    if (canvas.width !== result.width) canvas.width = result.width;
+    if (canvas.height !== result.height) canvas.height = result.height;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(result, 0, 0);
+    updateResultPreview(result);
     return;
   }
   const document = activeDocument();
@@ -166,8 +169,10 @@ function render() {
 
 function renderDocument(document, target, targetCtx, width, includeDraft = false, includeWatermark = true) {
   const height = Math.round(width * document.image.naturalHeight / document.image.naturalWidth);
-  target.width = width;
-  target.height = height;
+  // Redimensionar un canvas durante un gesto borra su contenido y puede cancelar
+  // pointer capture en Safari/iOS. Solo cambia sus dimensiones cuando es necesario.
+  if (target.width !== width) target.width = width;
+  if (target.height !== height) target.height = height;
   targetCtx.clearRect(0, 0, width, height);
   targetCtx.drawImage(document.image, 0, 0, width, height);
   const strokes = includeDraft && lite.drawing ? [...document.strokes, lite.drawing] : document.strokes;
@@ -287,6 +292,7 @@ function finishStroke(event) {
 
 canvas.addEventListener('pointerup', finishStroke);
 canvas.addEventListener('pointercancel', finishStroke);
+canvas.addEventListener('lostpointercapture', finishStroke);
 
 $('#lite-brush-size').addEventListener('input', event => {
   const value = Number(event.target.value);
@@ -356,6 +362,18 @@ document.querySelectorAll('[data-lite-format]').forEach(button => button.addEven
 function updateResultSummary() {
   const strokes = lite.documents.reduce((total, item) => total + item.strokes.length, 0);
   $('#lite-result-summary').innerHTML = `<div><span>Documentos</span><b>${lite.documents.length}</b></div><div><span>Zonas censuradas</span><b>${strokes}</b></div><div><span>Marca de agua</span><b>${lite.watermark.enabled ? 'Aplicada' : 'Sin marca'}</b></div>`;
+}
+
+function updateResultPreview(result) {
+  const preview = $('#lite-result-preview');
+  const maximumWidth = 360;
+  const scale = Math.min(1, maximumWidth / result.width);
+  const thumbnail = document.createElement('canvas');
+  thumbnail.width = Math.max(1, Math.round(result.width * scale));
+  thumbnail.height = Math.max(1, Math.round(result.height * scale));
+  thumbnail.getContext('2d').drawImage(result, 0, 0, thumbnail.width, thumbnail.height);
+  preview.src = thumbnail.toDataURL('image/jpeg', .84);
+  preview.alt = `Vista previa de ${lite.documents.length} ${lite.documents.length === 1 ? 'documento protegido' : 'documentos protegidos'}`;
 }
 
 function makeResultCanvas() {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'dni-seguro-v3';
+const CACHE_VERSION = 'dni-seguro-v4';
 const APP_SHELL = [
   './', './index.html', './styles.css', './app.js', './lite.js', './ocr-helpers.js', './pwa.js',
   './manifest.webmanifest', './offline.html', './site-page.css', './faq.html', './privacidad.html',
