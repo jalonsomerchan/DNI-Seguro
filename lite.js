@@ -89,14 +89,12 @@ function loadImage(file) {
 function updateInterface() {
   renderTabs();
   const hasDocument = lite.active >= 0;
+  view.querySelector('.lite-add-actions').classList.toggle('hidden', !hasDocument);
   $('#lite-empty').classList.toggle('hidden', hasDocument || lite.step !== 1);
   canvas.classList.toggle('hidden', !hasDocument);
   $('#lite-touch-hint').classList.toggle('hidden', !hasDocument || lite.step !== 2);
-  $('#lite-result-label').classList.toggle('hidden', lite.step !== 5);
+  $('#lite-result-label').classList.toggle('hidden', lite.step !== 4);
   canvas.style.cursor = lite.step === 2 ? 'crosshair' : 'default';
-  $('#lite-count').textContent = lite.documents.length
-    ? `${lite.documents.length} ${lite.documents.length === 1 ? 'documento añadido' : 'documentos añadidos'} · se descargarán juntos`
-    : 'Aún no has añadido documentos';
   updateEditButtons();
   render();
 }
@@ -108,7 +106,7 @@ function renderTabs() {
   ).join('');
   tabs.querySelectorAll('[data-lite-document]').forEach(button => button.addEventListener('click', () => {
     lite.active = Number(button.dataset.liteDocument);
-    if (lite.step === 5) goLiteStep(2);
+    if (lite.step === 4) goLiteStep(2);
     else updateInterface();
   }));
 }
@@ -117,14 +115,13 @@ const LITE_STEP_LABELS = {
   1: 'Paso 1 de 4 · Documento',
   2: 'Paso 2 de 4 · Censura',
   3: 'Paso 3 de 4 · Marca de agua',
-  4: 'Paso 4 de 4 · Más documentos',
-  5: 'Resultado · Vista previa final'
+  4: 'Paso 4 de 4 · Resultado'
 };
 
 function goLiteStep(step) {
   if (step > 1 && !lite.documents.length) return notify('Añade primero un documento.');
   lite.drawing = null;
-  lite.step = Math.max(1, Math.min(5, step));
+  lite.step = Math.max(1, Math.min(4, step));
   document.querySelectorAll('[data-lite-panel]').forEach(panel => panel.classList.toggle('active', Number(panel.dataset.litePanel) === lite.step));
   document.querySelectorAll('[data-lite-step]').forEach(button => {
     const number = Number(button.dataset.liteStep);
@@ -132,7 +129,7 @@ function goLiteStep(step) {
     button.classList.toggle('done', number < lite.step);
   });
   $('#lite-current-step').textContent = LITE_STEP_LABELS[lite.step];
-  if (lite.step === 5) updateResultSummary();
+  if (lite.step === 4) updateResultSummary();
   updateInterface();
   if (window.innerWidth < 901) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -143,8 +140,6 @@ document.querySelectorAll('[data-lite-step]').forEach(button => button.addEventL
   const step = Number(button.dataset.liteStep);
   if (step === 1 || lite.documents.length) goLiteStep(step);
 }));
-$('#lite-finish').addEventListener('click', () => goLiteStep(5));
-
 function activeDocument() { return lite.documents[lite.active]; }
 
 function fitPreview(image) {
@@ -155,7 +150,7 @@ function fitPreview(image) {
 }
 
 function render() {
-  if (lite.step === 5 && lite.documents.length) {
+  if (lite.step === 4 && lite.documents.length) {
     const result = makeResultCanvas();
     canvas.width = result.width;
     canvas.height = result.height;

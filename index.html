@@ -16,7 +16,7 @@
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>DNI Seguro — Censura tu DNI en local y protege tus datos</title>
-    <link rel="stylesheet" href="styles.css?v=60" />
+    <link rel="stylesheet" href="styles.css?v=62" />
   </head>
   <body>
     <div class="app-splash" id="app-splash" role="status" aria-label="Cargando DNI Seguro">
@@ -69,28 +69,6 @@
           </article>
         </div>
 
-        <div class="upload-card hidden" id="drop-zone">
-          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden />
-          <input id="camera-input" type="file" accept="image/*" capture="environment" hidden />
-          <div class="upload-illustration" aria-hidden="true">
-            <div class="scan-corners"></div>
-            <svg viewBox="0 0 64 64"><rect x="10" y="15" width="44" height="34" rx="5"/><circle cx="23" cy="30" r="6"/><path d="M15 44c1.7-7 5.4-10.5 11-10.5S35.3 37 37 44M40 25h9M40 31h9M40 37h6"/></svg>
-          </div>
-          <h2>Sube una foto de tu DNI</h2>
-          <p>Arrastra la imagen aquí o elige una opción</p>
-          <div class="upload-actions">
-            <button class="btn btn-primary" id="choose-file">
-              <svg viewBox="0 0 20 20"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>
-              Elegir archivo
-            </button>
-            <button class="btn btn-secondary" id="take-photo">
-              <svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>
-              Hacer una foto
-            </button>
-          </div>
-          <small>JPG, PNG o WEBP · Máximo 15 MB</small>
-        </div>
-
         <button class="how-link" data-open-guide="guide">
           <span><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M8.2 7.4a2 2 0 1 1 2.6 1.9c-.8.3-.8 1-.8 1.5M10 14h.01"/></svg></span>
           ¿Cómo funciona?
@@ -109,8 +87,71 @@
         </div>
       </section>
 
-      <section class="workspace hidden" id="editor-view" aria-live="polite">
-        <nav class="stepper" aria-label="Progreso">
+      <section class="lite-workspace mode-workspace hidden" id="ocr-start-view" aria-live="polite">
+        <div class="lite-topbar mode-topbar">
+          <button type="button" class="lite-back mode-back" id="ocr-start-back"><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5 5 5 5"/></svg>Volver</button>
+          <div class="lite-title mode-title"><span>VERSIÓN ASISTIDA</span><h1>Protege tu DNI con ayuda automática</h1><p>Detectamos los campos en tu dispositivo y tú decides cuáles ocultar.</p></div>
+          <div class="lite-private mode-private"><span></span>100% local</div>
+        </div>
+
+        <nav class="lite-stepper mode-stepper" aria-label="Progreso de la versión asistida">
+          <button type="button" class="active"><span>1</span><b>Documento</b></button><i></i>
+          <button type="button" disabled><span>2</span><b>Datos a ocultar</b></button><i></i>
+          <button type="button" disabled><span>3</span><b>Marca de agua</b></button><i></i>
+          <button type="button" disabled><span>4</span><b>Resultado</b></button>
+        </nav>
+
+        <div class="lite-shell mode-shell ocr-start-shell">
+          <div class="lite-editor mode-editor ocr-upload-stage">
+            <div class="lite-document-bar mode-document-bar">
+              <span class="lite-current-step">Paso 1 de 4 · Documento</span>
+            </div>
+            <div class="lite-canvas-wrap ocr-drop-wrap">
+              <div class="upload-card" id="drop-zone">
+                <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden />
+                <input id="camera-input" type="file" accept="image/*" capture="environment" hidden />
+                <div class="upload-illustration" aria-hidden="true">
+                  <div class="scan-corners"></div>
+                  <svg viewBox="0 0 64 64"><rect x="10" y="15" width="44" height="34" rx="5"/><circle cx="23" cy="30" r="6"/><path d="M15 44c1.7-7 5.4-10.5 11-10.5S35.3 37 37 44M40 25h9M40 31h9M40 37h6"/></svg>
+                </div>
+                <h2>Añade el DNI</h2>
+                <p>Haz una foto bien encuadrada o elige una imagen de tu dispositivo.</p>
+                <div class="upload-actions">
+                  <button class="btn btn-primary" id="take-photo">
+                    <svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>
+                    Hacer una foto
+                  </button>
+                  <button class="btn btn-secondary" id="choose-file">
+                    <svg viewBox="0 0 20 20"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>
+                    Elegir imagen
+                  </button>
+                </div>
+                <small>JPG, PNG o WEBP · Máximo 15 MB</small>
+              </div>
+            </div>
+          </div>
+
+          <aside class="lite-controls mode-controls">
+            <section class="lite-panel mode-panel active">
+              <div class="lite-panel-heading"><span>01</span><div><h2>Añade y revisa el documento</h2><p>El análisis empezará automáticamente y podrás corregir cualquier selección.</p></div></div>
+              <div class="ocr-flow-list">
+                <div><span>1</span><p><b>Buena luz y sin reflejos</b>Incluye los cuatro bordes del DNI.</p></div>
+                <div><span>2</span><p><b>Detección asistida</b>Localizamos campos sin subir la imagen.</p></div>
+                <div><span>3</span><p><b>Siempre bajo tu control</b>Revisa, ajusta o añade zonas manuales.</p></div>
+              </div>
+              <div class="local-note"><svg viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.4c0 3.8-2.5 6.3-6 7.6-3.5-1.3-6-3.8-6-7.6V5l6-2.5Z"/><path d="M7.5 9.5h5v4h-5zM8.5 9.5v-1a1.5 1.5 0 0 1 3 0v1"/></svg><span><b>La imagen permanece en tu dispositivo</b>No se envía a ningún servidor.</span></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="workspace mode-workspace hidden" id="editor-view" aria-live="polite">
+        <div class="lite-topbar mode-topbar">
+          <button type="button" class="lite-back mode-back" id="ocr-editor-back"><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5 5 5 5"/></svg>Inicio</button>
+          <div class="lite-title mode-title"><span>VERSIÓN ASISTIDA</span><h1>Protege tu DNI con ayuda automática</h1><p>Revisa siempre la detección antes de descargar el resultado.</p></div>
+          <div class="lite-private mode-private"><span></span>100% local</div>
+        </div>
+        <nav class="stepper mode-stepper" aria-label="Progreso">
           <button class="step active" data-step="1"><span>1</span><b>Documento</b></button>
           <i></i>
           <button class="step" data-step="2"><span>2</span><b>Datos a ocultar</b></button>
@@ -120,8 +161,8 @@
           <button class="step" data-step="4"><span>4</span><b>Resultado</b></button>
         </nav>
 
-        <div class="editor-shell">
-          <div class="editor-main">
+        <div class="editor-shell mode-shell">
+          <div class="editor-main mode-editor">
             <div class="mobile-step-title" id="mobile-step-title">1 de 4 · Documento</div>
             <div class="document-manager" id="document-manager">
               <div class="document-tabs" id="document-tabs" aria-label="Documentos añadidos"></div>
@@ -151,7 +192,7 @@
             <div class="canvas-hint"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="M10 8.5V14M10 6h.01"/></svg><span id="canvas-hint-text">Puedes cambiar el tipo de documento si la detección no es correcta.</span></div>
           </div>
 
-          <aside class="control-panel">
+          <aside class="control-panel mode-controls">
             <section class="panel-step active" data-panel="1">
               <div class="panel-heading"><span>01</span><div><h2>Revisa el documento</h2><p>Confirma qué cara del DNI has subido.</p></div></div>
               <div class="field-label" id="document-side-label">Cara del documento</div>
@@ -235,26 +276,26 @@
         </div>
       </section>
 
-      <section class="lite-workspace hidden" id="lite-view" aria-live="polite">
-        <div class="lite-topbar">
-          <button type="button" class="lite-back" id="lite-back"><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5 5 5 5"/></svg>Volver</button>
-          <div class="lite-title"><span>VERSIÓN SIMPLE</span><h1>Oculta lo que no quieras compartir</h1><p>Todo sucede en tu dispositivo. Sin análisis, cuentas ni esperas.</p></div>
-          <div class="lite-private"><span></span>100% local</div>
+      <section class="lite-workspace mode-workspace hidden" id="lite-view" aria-live="polite">
+        <div class="lite-topbar mode-topbar">
+          <button type="button" class="lite-back mode-back" id="lite-back"><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5 5 5 5"/></svg>Volver</button>
+          <div class="lite-title mode-title"><span>VERSIÓN SIMPLE</span><h1>Oculta lo que no quieras compartir</h1><p>Todo sucede en tu dispositivo. Sin análisis, cuentas ni esperas.</p></div>
+          <div class="lite-private mode-private"><span></span>100% local</div>
         </div>
 
-        <nav class="lite-stepper" aria-label="Progreso de la versión Lite">
+        <nav class="lite-stepper mode-stepper" aria-label="Progreso de la versión Simple">
           <button type="button" class="active" data-lite-step="1"><span>1</span><b>Documento</b></button><i></i>
-          <button type="button" data-lite-step="2"><span>2</span><b>Censura</b></button><i></i>
+          <button type="button" data-lite-step="2"><span>2</span><b>Datos a ocultar</b></button><i></i>
           <button type="button" data-lite-step="3"><span>3</span><b>Marca de agua</b></button><i></i>
-          <button type="button" data-lite-step="4"><span>4</span><b>Más documentos</b></button><i></i>
-          <button type="button" data-lite-step="5"><span><svg viewBox="0 0 20 20"><path d="m5.5 10 3 3 6-6"/></svg></span><b>Resultado</b></button>
+          <button type="button" data-lite-step="4"><span>4</span><b>Resultado</b></button>
         </nav>
 
-        <div class="lite-shell">
-          <div class="lite-editor">
+        <div class="lite-shell mode-shell">
+          <div class="lite-editor mode-editor">
             <div class="lite-document-bar">
               <div class="lite-tabs" id="lite-tabs" aria-label="Documentos"></div>
               <span class="lite-current-step" id="lite-current-step">Paso 1 de 4 · Documento</span>
+              <div class="lite-add-actions"><button type="button" id="lite-add-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Foto</button><button type="button" id="lite-add-file"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Imagen</button></div>
             </div>
 
             <div class="lite-canvas-wrap" id="lite-canvas-wrap">
@@ -270,7 +311,7 @@
             </div>
           </div>
 
-          <aside class="lite-controls">
+          <aside class="lite-controls mode-controls">
             <section class="lite-panel active" data-lite-panel="1">
               <div class="lite-panel-heading"><span>01</span><div><h2>Añade el documento</h2><p>Haz una foto con el marco de cámara o elige una imagen.</p></div></div>
               <div class="lite-capture-actions"><button type="button" class="btn btn-primary" id="lite-panel-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Hacer una foto</button><button type="button" class="btn btn-secondary" id="lite-panel-file"><svg viewBox="0 0 20 20"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5M4 11v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/></svg>Elegir imagen</button></div>
@@ -300,23 +341,16 @@
                 <label class="lite-range"><span>Intensidad <b id="lite-opacity-label">24%</b></span><input id="lite-watermark-opacity" type="range" min="10" max="60" value="24" /></label>
                 <label>Color</label><div class="lite-color-options"><button type="button" class="active" data-lite-color="#b42318" style="--swatch:#b42318" aria-label="Rojo"></button><button type="button" data-lite-color="#111827" style="--swatch:#111827" aria-label="Negro"></button><button type="button" data-lite-color="#1d4ed8" style="--swatch:#1d4ed8" aria-label="Azul"></button><button type="button" data-lite-color="#ffffff" style="--swatch:#ffffff" aria-label="Blanco"></button></div>
               </div>
-              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="2">Anterior</button><button type="button" class="btn btn-primary" data-lite-next="4">Continuar</button></div>
+              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="2">Anterior</button><button type="button" class="btn btn-primary" data-lite-next="4">Ver resultado <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg></button></div>
             </section>
 
-            <section class="lite-panel" data-lite-panel="4">
-              <div class="lite-panel-heading"><span>04</span><div><h2>¿Otro documento?</h2><p>Añádelo ahora o finaliza para revisar el resultado.</p></div></div>
-              <div class="lite-count" id="lite-count">Aún no has añadido documentos</div>
-              <div class="lite-more-actions"><button type="button" id="lite-add-camera"><svg viewBox="0 0 20 20"><path d="M3 7.5h3l1.2-2h5.6l1.2 2h3v8H3v-8Z"/><circle cx="10" cy="11.5" r="2.7"/></svg>Fotografiar otro</button><button type="button" id="lite-add-file"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>Adjuntar otro</button></div>
-              <div class="lite-panel-nav"><button type="button" class="lite-prev" data-lite-prev="3">Anterior</button><button type="button" class="btn btn-primary" id="lite-finish">Finalizar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg></button></div>
-            </section>
-
-            <section class="lite-panel lite-result-panel" data-lite-panel="5">
+            <section class="lite-panel lite-result-panel" data-lite-panel="4">
               <div class="success-mark"><svg viewBox="0 0 24 24"><path d="M12 2.5 20 6v5.7c0 5-3.4 8.3-8 9.8-4.6-1.5-8-4.8-8-9.8V6l8-3.5Z"/><path d="m8.5 12 2.2 2.2 4.8-4.9"/></svg></div>
               <h2>Resultado listo</h2><p>Revisa la vista previa antes de descargar.</p>
               <div class="lite-result-summary" id="lite-result-summary"></div>
               <label>Formato de descarga</label><div class="lite-format-selector"><button type="button" class="active" data-lite-format="jpeg">JPG <small>Más ligero</small></button><button type="button" data-lite-format="png">PNG <small>Más calidad</small></button></div>
               <button type="button" class="btn btn-primary lite-download" id="lite-download"><svg viewBox="0 0 20 20"><path d="M10 3v10m0 0 3.5-3.5M10 13 6.5 9.5M4 16.5h12"/></svg>Descargar resultado</button>
-              <button type="button" class="lite-result-back" data-lite-prev="4">Volver y editar</button>
+              <button type="button" class="lite-result-back" data-lite-prev="3">Volver y editar</button>
               <small class="lite-review-note">Comprueba que ningún dato sensible siga visible antes de compartir.</small>
             </section>
           </aside>
@@ -381,8 +415,8 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg viewBox="0 0 20 20"><path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/><path d="m6.8 10 2.1 2.1 4.4-4.5"/></svg><span></span></div>
-    <script src="app.js?v=60" type="module"></script>
-    <script src="lite.js?v=4" type="module"></script>
+    <script src="app.js?v=62" type="module"></script>
+    <script src="lite.js?v=6" type="module"></script>
     <script src="pwa.js?v=1" type="module"></script>
   </body>
 </html>

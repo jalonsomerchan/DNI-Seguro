@@ -4,8 +4,8 @@ Aplicación web para censurar uno o varios DNI españoles (3.0 o posteriores), a
 
 Incluye dos modos:
 
-- **Completo:** analiza el documento localmente con OCR, propone campos y permite ajustar las zonas.
-- **Lite:** abre la cámara con un marco para encuadrar y recortar el documento, o permite elegir una imagen sin análisis; después permite censurar datos pintando con el dedo o el ratón, añadir una marca de agua opcional, combinar varios documentos y descargar una única imagen.
+- **Versión con OCR:** analiza el documento localmente, propone campos y permite ajustar las zonas.
+- **Versión Simple (Lite):** abre la cámara con un marco para encuadrar y recortar el documento, o permite elegir una imagen sin análisis; después permite censurar datos pintando con el dedo o el ratón, añadir una marca de agua opcional, combinar varios documentos y descargar una única imagen.
 
 ## Privacidad
 
@@ -37,6 +37,8 @@ Después abre `http://localhost:8080`.
 
 No hay proceso de compilación ni dependencias que instalar.
 
+La aplicación incluye un manifiesto PWA y un service worker. Al visitarla desde HTTPS se puede instalar y la Versión Simple queda disponible sin conexión. El modo OCR descarga su motor y datos de idioma la primera vez y los reutiliza desde la caché en los usos posteriores.
+
 ## Uso
 
 1. Sube una imagen o abre la cámara integrada. Encaja el DNI completo en el marco y pulsa el disparador; puedes cambiar entre cámaras cuando el dispositivo ofrece más de una.
@@ -53,9 +55,9 @@ No hay proceso de compilación ni dependencias que instalar.
 
 > Antes de compartir, revisa visualmente que todos los datos sensibles estén ocultos. Cuando una zona no pueda situarse con suficiente seguridad, utiliza el modo manual antes de exportar.
 
-### Versión Lite
+### Versión Simple (Lite)
 
-1. Pulsa “Usar versión Lite” en la portada.
+1. Pulsa “Usar Versión Simple” en la portada.
 2. Haz una foto encajando el documento dentro del marco de cámara, o elige una imagen.
 3. Pinta con el dedo o el ratón sobre cualquier dato que quieras emborronar; puedes cambiar el grosor, deshacer o limpiar los trazos.
 4. Activa, si quieres, una marca de agua y personaliza texto, distribución, color, tamaño e intensidad.

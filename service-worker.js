@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'dni-seguro-v1';
+const CACHE_VERSION = 'dni-seguro-v3';
 const APP_SHELL = [
   './', './index.html', './styles.css', './app.js', './lite.js', './ocr-helpers.js', './pwa.js',
   './manifest.webmanifest', './offline.html', './site-page.css', './faq.html', './privacidad.html',
@@ -28,7 +28,7 @@ self.addEventListener('fetch', event => {
   }
 
   if (url.origin === location.origin || url.hostname === 'cdn.jsdelivr.net') {
-    event.respondWith(caches.match(event.request, { ignoreSearch: url.origin === location.origin }).then(cached => cached || fetch(event.request).then(response => {
+    event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
       const copy = response.clone();
       caches.open(CACHE_VERSION).then(cache => cache.put(event.request, copy));
       return response;

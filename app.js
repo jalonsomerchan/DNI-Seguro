@@ -111,15 +111,35 @@ function restoreDocument(documentState){
 }
 
 const uploadView = $('#upload-view');
+const ocrStartView = $('#ocr-start-view');
 const editorView = $('#editor-view');
 const canvas = $('#preview-canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const processing = $('#processing-overlay');
 
 $('#open-ocr').addEventListener('click',()=>{
-  dropZone.classList.remove('hidden');
-  dropZone.scrollIntoView({behavior:'smooth',block:'center'});
-  setTimeout(()=>$('#choose-file').focus(),450);
+  uploadView.classList.add('hidden');
+  if(state.documents.length){
+    editorView.classList.remove('hidden');
+    ocrStartView.classList.add('hidden');
+  }else{
+    editorView.classList.add('hidden');
+    ocrStartView.classList.remove('hidden');
+  }
+  window.scrollTo({top:0,behavior:'smooth'});
+  setTimeout(()=>$('#take-photo').focus(),350);
+});
+
+$('#ocr-start-back').addEventListener('click',()=>{
+  ocrStartView.classList.add('hidden');
+  uploadView.classList.remove('hidden');
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+$('#ocr-editor-back').addEventListener('click',()=>{
+  editorView.classList.add('hidden');
+  uploadView.classList.remove('hidden');
+  window.scrollTo({top:0,behavior:'smooth'});
 });
 
 $('#choose-file').addEventListener('click', () => {state.pendingAppend=false;$('#file-input').click();});
@@ -168,6 +188,7 @@ async function handleFile(file,{preCropped=false,append=state.pendingAppend}={})
     state.originalImage = image;
     state.image = image;
     uploadView.classList.add('hidden');
+    ocrStartView.classList.add('hidden');
     editorView.classList.remove('hidden');
     fitCanvas(image);
     goToStep(1);
