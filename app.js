@@ -45,7 +45,7 @@ function defaultFieldSelection(side,id){
 
 const state = {
   step: 1, side: 'front', image: null, originalImage: null, fileName: 'dni', fields: [],
-  redactionStyle: 'solid', zoom: 1, manualMode: false, adjustMode: false,
+  redactionStyle: 'pixel', zoom: 1, manualMode: false, adjustMode: false,
   watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', layout: 'repeat', opacity: .24, size: 1, color: '#b42318' },
   format: 'jpeg', ocrText: '', ocrWords: [], ocrLayout: null, photoField: null,
   cropApplied: false, rotationApplied: false, focusedField: null, rendering: false,
