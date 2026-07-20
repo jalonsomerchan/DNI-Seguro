@@ -11,7 +11,16 @@ else window.addEventListener('load', hideSplash, { once: true });
 setTimeout(hideSplash, 2500);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(error => {
-    console.warn('No se ha podido activar el modo offline.', error);
-  }), { once: true });
+  const hadServiceWorkerController = Boolean(navigator.serviceWorker.controller);
+  let reloadingForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadServiceWorkerController || reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    location.reload();
+  });
+  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' })
+    .then(registration => registration.update())
+    .catch(error => {
+      console.warn('No se ha podido activar el modo offline.', error);
+    }), { once: true });
 }

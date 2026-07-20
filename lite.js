@@ -14,6 +14,7 @@ const view = $('#lite-view');
 const home = $('#upload-view');
 const canvas = $('#lite-canvas');
 const ctx = canvas.getContext('2d');
+const litePixelatedLayers = new WeakMap();
 const fileInput = $('#lite-file-input');
 const cameraInput = $('#lite-camera-input');
 
@@ -95,6 +96,7 @@ function updateInterface() {
   $('#lite-touch-hint').classList.toggle('hidden', !hasDocument || lite.step !== 2);
   $('#lite-result-label').classList.toggle('hidden', lite.step !== 4);
   canvas.style.cursor = lite.step === 2 ? 'crosshair' : 'default';
+  $('#lite-next-step').disabled = !hasDocument;
   updateEditButtons();
   render();
 }
@@ -122,6 +124,7 @@ function goLiteStep(step) {
   if (step > 1 && !lite.documents.length) return notify('Añade primero un documento.');
   lite.drawing = null;
   lite.step = Math.max(1, Math.min(4, step));
+  view.dataset.currentStep = lite.step;
   document.querySelectorAll('[data-lite-panel]').forEach(panel => panel.classList.toggle('active', Number(panel.dataset.litePanel) === lite.step));
   document.querySelectorAll('[data-lite-step]').forEach(button => {
     const number = Number(button.dataset.liteStep);
@@ -129,13 +132,22 @@ function goLiteStep(step) {
     button.classList.toggle('done', number < lite.step);
   });
   $('#lite-current-step').textContent = LITE_STEP_LABELS[lite.step];
+  $('#lite-prev-step').disabled = lite.step === 1;
+  $('#lite-panel-nav').classList.toggle('hidden', lite.step === 4);
+  $('#lite-next-step').innerHTML = lite.step === 3
+    ? 'Ver resultado <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>'
+    : 'Continuar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>';
   if (lite.step === 4) updateResultSummary();
   updateInterface();
   if (window.innerWidth < 901) view.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-document.querySelectorAll('[data-lite-next]').forEach(button => button.addEventListener('click', () => goLiteStep(Number(button.dataset.liteNext))));
-document.querySelectorAll('[data-lite-prev]').forEach(button => button.addEventListener('click', () => goLiteStep(Number(button.dataset.litePrev))));
+$('#lite-next-step').addEventListener('click', () => {
+  if (lite.step < 4) goLiteStep(lite.step + 1);
+});
+$('#lite-prev-step').addEventListener('click', () => {
+  if (lite.step > 1) goLiteStep(lite.step - 1);
+});
 document.querySelectorAll('[data-lite-step]').forEach(button => button.addEventListener('click', () => {
   const step = Number(button.dataset.liteStep);
   if (step === 1 || lite.documents.length) goLiteStep(step);
@@ -183,7 +195,38 @@ function renderDocument(document, target, targetCtx, width, includeDraft = false
 function drawBlurredStrokes(image, strokes, targetCtx, width, height) {
   if (!strokes.length) return;
   // Evita depender de CanvasRenderingContext2D.filter, que falla en algunos
-  // navegadores móviles. El mosaico se genera y exporta de forma consistente.
+  // navegadores móviles. La capa se reutiliza para no crear varios canvas
+  // grandes en cada pointermove, algo especialmente costoso en Safari/iOS.
+  const layer = getLitePixelatedLayer(image, width, height);
+  const pattern = targetCtx.createPattern(layer, 'no-repeat');
+  if (!pattern) return;
+  targetCtx.save();
+  targetCtx.strokeStyle = pattern;
+  targetCtx.fillStyle = pattern;
+  targetCtx.lineCap = 'round';
+  targetCtx.lineJoin = 'round';
+  for (const stroke of strokes) {
+    if (!stroke.points.length) continue;
+    const lineWidth = Math.max(8, stroke.size * Math.min(width, height));
+    targetCtx.lineWidth = lineWidth;
+    targetCtx.beginPath();
+    if (stroke.points.length === 1) {
+      targetCtx.arc(stroke.points[0].x * width, stroke.points[0].y * height, lineWidth / 2, 0, Math.PI * 2);
+      targetCtx.fill();
+      continue;
+    }
+    targetCtx.moveTo(stroke.points[0].x * width, stroke.points[0].y * height);
+    for (let index = 1; index < stroke.points.length; index++) {
+      targetCtx.lineTo(stroke.points[index].x * width, stroke.points[index].y * height);
+    }
+    targetCtx.stroke();
+  }
+  targetCtx.restore();
+}
+
+function getLitePixelatedLayer(image, width, height) {
+  const cached = litePixelatedLayers.get(image);
+  if (cached?.width === width && cached.height === height) return cached.layer;
   const pixelSize = Math.max(20, Math.round(Math.min(width, height) * .04));
   const mosaic = document.createElement('canvas');
   mosaic.width = Math.max(1, Math.ceil(width / pixelSize));
@@ -197,27 +240,8 @@ function drawBlurredStrokes(image, strokes, targetCtx, width, height) {
   const layerCtx = layer.getContext('2d');
   layerCtx.imageSmoothingEnabled = false;
   layerCtx.drawImage(mosaic, 0, 0, width, height);
-  layerCtx.globalCompositeOperation = 'destination-in';
-  layerCtx.strokeStyle = '#fff';
-  layerCtx.fillStyle = '#fff';
-  layerCtx.lineCap = 'round';
-  layerCtx.lineJoin = 'round';
-  for (const stroke of strokes) {
-    if (!stroke.points.length) continue;
-    const lineWidth = Math.max(8, stroke.size * Math.min(width, height));
-    layerCtx.lineWidth = lineWidth;
-    layerCtx.beginPath();
-    layerCtx.moveTo(stroke.points[0].x * width, stroke.points[0].y * height);
-    for (let index = 1; index < stroke.points.length; index++) {
-      layerCtx.lineTo(stroke.points[index].x * width, stroke.points[index].y * height);
-    }
-    if (stroke.points.length === 1) {
-      layerCtx.arc(stroke.points[0].x * width, stroke.points[0].y * height, lineWidth / 2, 0, Math.PI * 2);
-      layerCtx.fill();
-    } else layerCtx.stroke();
-  }
-  layerCtx.globalCompositeOperation = 'source-over';
-  targetCtx.drawImage(layer, 0, 0);
+  litePixelatedLayers.set(image, { width, height, layer });
+  return layer;
 }
 
 function drawLiteWatermark(targetCtx, width, height) {
