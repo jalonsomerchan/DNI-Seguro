@@ -6,7 +6,7 @@ const lite = {
   active: -1,
   brush: .07,
   drawing: null,
-  watermark: { enabled: false, text: 'COPIA PARA TRÁMITE', opacity: .24, size: 1, layout: 'repeat', color: '#b42318' },
+  watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', opacity: .24, size: 1, layout: 'repeat', color: '#b42318' },
   format: 'jpeg'
 };
 
@@ -36,10 +36,8 @@ function openCameraPicker() { document.dispatchEvent(new CustomEvent('lite:open-
 
 $('#lite-add-file').addEventListener('click', openFilePicker);
 $('#lite-empty-file').addEventListener('click', openFilePicker);
-$('#lite-panel-file').addEventListener('click', openFilePicker);
 $('#lite-add-camera').addEventListener('click', openCameraPicker);
 $('#lite-empty-camera').addEventListener('click', openCameraPicker);
-$('#lite-panel-camera').addEventListener('click', openCameraPicker);
 
 fileInput.addEventListener('change', async event => {
   await addFiles([...event.target.files]);
@@ -133,7 +131,7 @@ function goLiteStep(step) {
   });
   $('#lite-current-step').textContent = LITE_STEP_LABELS[lite.step];
   $('#lite-prev-step').disabled = lite.step === 1;
-  $('#lite-panel-nav').classList.toggle('hidden', lite.step === 4);
+  $('#lite-panel-nav').classList.toggle('hidden', lite.step === 4 || (lite.step === 1 && !lite.documents.length));
   $('#lite-next-step').innerHTML = lite.step === 3
     ? 'Ver resultado <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>'
     : 'Continuar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>';
@@ -351,6 +349,7 @@ $('#lite-watermark-enabled').addEventListener('change', event => {
 
 $('#lite-watermark-text').addEventListener('input', event => {
   lite.watermark.text = event.target.value;
+  $('#lite-char-count').textContent = `${event.target.value.length}/60`;
   render();
 });
 

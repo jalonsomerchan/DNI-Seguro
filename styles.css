@@ -452,8 +452,30 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
 .ocr-flow-list b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 10px; }
 .mode-panel.active { min-height: 592px; }
 
+/* La versión Simple usa los mismos componentes visuales que la versión OCR. */
+#lite-view .mode-shell { grid-template-columns: minmax(0,1fr) 360px; }
+#lite-view .simple-editor { display: flex; flex-direction: column; }
+#lite-view .simple-document-bar { flex: 0 0 auto; }
+#lite-view .lite-canvas-wrap { flex: 1; min-height: 555px; padding: 28px; }
+#lite-view .lite-empty.upload-card { width: min(570px,100%); padding: 37px 38px 30px; color: var(--ink); border: 1.5px dashed #aabdb7; border-radius: 22px; background: rgba(255,255,252,.86); box-shadow: 0 12px 35px rgba(18,40,35,.1); }
+#lite-view .lite-empty .upload-illustration { width: 78px; height: 70px; margin: 0 auto 20px; display: grid; background: transparent; border-radius: 0; }
+#lite-view .lite-empty .upload-illustration svg { width: 58px; }
+#lite-view .lite-empty.upload-card h2 { margin: 0 0 7px; font: 700 22px Manrope,sans-serif; }
+#lite-view .lite-empty.upload-card p { max-width: none; margin: 0 0 23px; color: var(--muted); font-size: 14px; line-height: normal; }
+#lite-view .lite-empty .upload-actions { display: flex; justify-content: center; gap: 11px; }
+#lite-view .lite-empty .upload-actions .btn { min-height: 45px; font-size: inherit; }
+#lite-view .lite-empty .upload-actions .btn svg { width: 18px; }
+#lite-view .lite-empty.upload-card small { display: block; margin-top: 18px; color: #89918f; font-size: 11px; }
+#lite-view .panel-step { min-height: 0; }
+#lite-view .simple-manual-section { margin-top: 2px; }
+#lite-view .manual-actions button:disabled { opacity: .42; cursor: default; }
+#lite-view .result-panel { padding-top: 38px; }
+#lite-view .result-actions { margin-top: 0; }
+#lite-view .result-actions .btn { color: var(--ink); }
+
 @media (max-width: 900px) {
   .mode-shell { grid-template-columns: 1fr; }
+  #lite-view .mode-shell { grid-template-columns: 1fr; }
   .mode-controls { border-left: 0; border-top: 1px solid #dcdfda; }
   .mode-topbar { grid-template-columns: 90px minmax(0,1fr) 90px; }
 }
@@ -470,6 +492,10 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
   .mode-stepper > i { margin-left: -4px; margin-right: -4px; }
   .mode-shell { min-height: 0; border-left: 0; border-right: 0; border-radius: 0; box-shadow: none; }
   .mode-editor { padding: 12px; }
+  #lite-view .lite-canvas-wrap { min-height: 410px; max-height: 62vh; padding: 13px; }
+  #lite-view .lite-empty.upload-card { padding: 26px 18px 22px; }
+  #lite-view .lite-empty .upload-actions { flex-direction: column; }
+  #lite-view .lite-empty .upload-actions .btn { width: 100%; }
   .ocr-drop-wrap { min-height: 410px; max-height: none; padding: 13px; }
   .ocr-drop-wrap .upload-card { padding: 26px 18px 22px; }
   .ocr-start-shell .mode-controls { padding-bottom: calc(25px + env(safe-area-inset-bottom)); }
