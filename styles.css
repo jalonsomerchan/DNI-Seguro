@@ -334,6 +334,9 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
 .lite-editor { min-width: 0; padding: 22px; background: #f0f0eb; }
 .lite-document-bar { min-height: 42px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }.lite-tabs { display: flex; gap: 6px; overflow-x: auto; }.lite-tabs button { min-width: 40px; height: 36px; padding: 0 10px; color: #63706c; background: white; border: 1px solid #d6dbd7; border-radius: 8px; font-size: 10px; font-weight: 700; cursor: pointer; }.lite-tabs button.active { color: white; background: var(--green); border-color: var(--green); }.lite-tabs button span { opacity: .65; }
 .lite-add-actions { display: flex; gap: 6px; }.lite-add-actions button { height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 5px; color: var(--green); background: white; border: 1px solid #cbdad5; border-radius: 8px; font-size: 9px; font-weight: 700; cursor: pointer; }.lite-add-actions svg { width: 14px; }
+.lite-new-document { min-height: 36px; margin-left: auto; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 6px; color: white; background: var(--green); border: 1px solid var(--green); border-radius: 8px; font-size: 9px; font-weight: 800; cursor: pointer; }
+.lite-new-document svg { width: 14px; }
+.simple-document-bar.result-mode { justify-content: flex-end; }
 .lite-canvas-wrap { min-height: 555px; position: relative; display: grid; place-items: center; overflow: auto; background: #dfe1dc; border-radius: 13px; box-shadow: inset 0 1px 6px rgba(22,42,37,.09); }
 #lite-canvas { max-width: calc(100% - 28px); max-height: 515px; width: auto; height: auto; background: white; box-shadow: 0 12px 35px rgba(18,40,35,.18); touch-action: none; cursor: crosshair; }
 .lite-empty { width: min(410px,calc(100% - 35px)); padding: 35px 25px; text-align: center; color: #62706c; background: rgba(255,255,255,.78); border: 1px dashed #aeb9b5; border-radius: 16px; }.lite-empty > span { width: 70px; height: 70px; margin: 0 auto 14px; display: grid; place-items: center; color: var(--green); background: #e0f0ea; border-radius: 20px; }.lite-empty svg { width: 48px; }.lite-empty h2 { margin: 0 0 7px; color: var(--ink); font: 700 18px Manrope,sans-serif; }.lite-empty p { margin: 0 auto 20px; max-width: 310px; font-size: 11px; line-height: 1.55; }.lite-empty > div { display: flex; justify-content: center; gap: 8px; }.lite-empty .btn { min-height: 40px; font-size: 10px; }
@@ -496,8 +499,39 @@ dialog::backdrop { background: rgba(10,32,28,.55); backdrop-filter: blur(4px); }
   #lite-view .lite-empty.upload-card { padding: 26px 18px 22px; }
   #lite-view .lite-empty .upload-actions { flex-direction: column; }
   #lite-view .lite-empty .upload-actions .btn { width: 100%; }
+  #lite-view .lite-new-document { width: 100%; min-height: 42px; margin-left: 0; }
   .ocr-drop-wrap { min-height: 410px; max-height: none; padding: 13px; }
   .ocr-drop-wrap .upload-card { padding: 26px 18px 22px; }
   .ocr-start-shell .mode-controls { padding-bottom: calc(25px + env(safe-area-inset-bottom)); }
   .mode-document-bar { align-items: stretch; }
+}
+
+/* En el resultado, el documento conserva un tamaño legible y se recorre dentro de la vista previa. */
+#lite-view[data-current-step="4"] .lite-canvas-wrap {
+  display: block;
+  height: 555px;
+  min-height: 555px;
+  max-height: 555px;
+  flex: 0 0 555px;
+  padding: 28px 28px 64px;
+  overflow-x: auto;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-color: var(--green) #cfd5d1;
+  -webkit-overflow-scrolling: touch;
+}
+#lite-view[data-current-step="4"] #lite-canvas {
+  display: block;
+  max-height: none;
+  margin: 0 auto;
+  cursor: default;
+}
+#lite-view[data-current-step="4"] .lite-canvas-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+#lite-view[data-current-step="4"] .lite-canvas-wrap::-webkit-scrollbar-track { background: #cfd5d1; border-radius: 999px; }
+#lite-view[data-current-step="4"] .lite-canvas-wrap::-webkit-scrollbar-thumb { background: var(--green); border: 2px solid #cfd5d1; border-radius: 999px; }
+
+@media (max-width: 600px) {
+  #lite-view[data-current-step="4"] .lite-canvas-wrap { height: 62vh; min-height: 410px; max-height: 62vh; flex-basis: auto; padding: 13px 13px 58px; }
+  #lite-view[data-current-step="4"] .lite-result-label { max-width: calc(100% - 34px); white-space: normal; text-align: center; }
 }

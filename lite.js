@@ -4,6 +4,7 @@ const lite = {
   step: 1,
   documents: [],
   active: -1,
+  addingDocument: false,
   brush: .07,
   drawing: null,
   watermark: { enabled: true, text: 'COPIA PARA TRÁMITE', opacity: .24, size: 1, layout: 'repeat', color: '#b42318' },
@@ -58,6 +59,7 @@ document.addEventListener('lite:camera-fallback', () => cameraInput.click());
 async function addFiles(files) {
   const images = files.filter(file => file.type.startsWith('image/'));
   if (!images.length) return notify('Elige una imagen JPG, PNG o WEBP.');
+  const previousDocumentCount = lite.documents.length;
   for (const file of images) {
     if (file.size > 15 * 1024 * 1024) {
       notify(`${file.name} supera el límite de 15 MB.`);
@@ -71,8 +73,10 @@ async function addFiles(files) {
       notify(`No se ha podido leer ${file.name}.`);
     }
   }
-  if (lite.documents.length) goLiteStep(2);
-  else updateInterface();
+  if (lite.documents.length > previousDocumentCount) {
+    lite.addingDocument = false;
+    goLiteStep(2);
+  } else updateInterface();
 }
 
 function loadImage(file) {
@@ -88,13 +92,19 @@ function loadImage(file) {
 function updateInterface() {
   renderTabs();
   const hasDocument = lite.active >= 0;
-  view.querySelector('.lite-add-actions').classList.toggle('hidden', !hasDocument);
-  $('#lite-empty').classList.toggle('hidden', hasDocument || lite.step !== 1);
-  canvas.classList.toggle('hidden', !hasDocument);
-  $('#lite-touch-hint').classList.toggle('hidden', !hasDocument || lite.step !== 2);
+  const isResult = lite.step === 4;
+  const showUploader = lite.step === 1 && (!hasDocument || lite.addingDocument);
+  $('#lite-tabs').classList.toggle('hidden', isResult || lite.addingDocument);
+  $('#lite-current-step').classList.toggle('hidden', isResult);
+  view.querySelector('.lite-add-actions').classList.toggle('hidden', isResult || !hasDocument || lite.addingDocument);
+  $('#lite-new-document').classList.toggle('hidden', !isResult);
+  view.querySelector('.simple-document-bar').classList.toggle('result-mode', isResult);
+  $('#lite-empty').classList.toggle('hidden', !showUploader);
+  canvas.classList.toggle('hidden', !hasDocument || showUploader);
+  $('#lite-touch-hint').classList.toggle('hidden', !hasDocument || lite.step !== 2 || showUploader);
   $('#lite-result-label').classList.toggle('hidden', lite.step !== 4);
   canvas.style.cursor = lite.step === 2 ? 'crosshair' : 'default';
-  $('#lite-next-step').disabled = !hasDocument;
+  $('#lite-next-step').disabled = !hasDocument || lite.addingDocument;
   updateEditButtons();
   render();
 }
@@ -122,6 +132,7 @@ function goLiteStep(step) {
   if (step > 1 && !lite.documents.length) return notify('Añade primero un documento.');
   lite.drawing = null;
   lite.step = Math.max(1, Math.min(4, step));
+  if (lite.step !== 1) lite.addingDocument = false;
   view.dataset.currentStep = lite.step;
   document.querySelectorAll('[data-lite-panel]').forEach(panel => panel.classList.toggle('active', Number(panel.dataset.litePanel) === lite.step));
   document.querySelectorAll('[data-lite-step]').forEach(button => {
@@ -131,7 +142,7 @@ function goLiteStep(step) {
   });
   $('#lite-current-step').textContent = LITE_STEP_LABELS[lite.step];
   $('#lite-prev-step').disabled = lite.step === 1;
-  $('#lite-panel-nav').classList.toggle('hidden', lite.step === 4 || (lite.step === 1 && !lite.documents.length));
+  $('#lite-panel-nav').classList.toggle('hidden', lite.step === 4 || (lite.step === 1 && (!lite.documents.length || lite.addingDocument)));
   $('#lite-next-step').innerHTML = lite.step === 3
     ? 'Ver resultado <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>'
     : 'Continuar <svg viewBox="0 0 20 20"><path d="m7.5 4.5 5 5-5 5"/></svg>';
@@ -145,6 +156,10 @@ $('#lite-next-step').addEventListener('click', () => {
 });
 $('#lite-prev-step').addEventListener('click', () => {
   if (lite.step > 1) goLiteStep(lite.step - 1);
+});
+$('#lite-new-document').addEventListener('click', () => {
+  lite.addingDocument = true;
+  goLiteStep(1);
 });
 document.querySelectorAll('[data-lite-step]').forEach(button => button.addEventListener('click', () => {
   const step = Number(button.dataset.liteStep);
